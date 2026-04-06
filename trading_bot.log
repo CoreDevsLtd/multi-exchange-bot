@@ -3050,3 +3050,913 @@
 2026-04-06 13:15:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 13:15:15] "GET /api/signals/status HTTP/1.1" 200 -
 2026-04-06 13:15:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 13:15:20] "GET /health HTTP/1.1" 200 -
 2026-04-06 13:15:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 13:15:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:15:45 - root - INFO - ============================================================
+2026-04-06 17:15:45 - root - INFO - Multi-Exchange Trading Bot with Dashboard - Starting...
+2026-04-06 17:15:45 - root - INFO - ============================================================
+2026-04-06 17:15:45 - root - WARNING - No enabled exchanges found. Please configure exchanges in the dashboard.
+2026-04-06 17:15:45 - root - INFO - Starting dashboard only...
+2026-04-06 17:15:45 - root - INFO - Signal monitor initialized
+2026-04-06 17:15:45 - root - INFO - Webhook handler initialized
+2026-04-06 17:15:45 - root - WARNING - ⚠️  No trading executor available. Please configure exchange API keys in dashboard.
+2026-04-06 17:15:45 - root - WARNING - ⚠️  Set DEMO_MODE=true environment variable to enable demo mode.
+2026-04-06 17:15:45 - dashboard - INFO - Config file dashboard_config.json not found, using defaults
+2026-04-06 17:15:45 - dashboard - INFO - Demo mode instance created (disabled by default)
+2026-04-06 17:15:45 - root - INFO - ============================================================
+2026-04-06 17:15:45 - root - INFO - Dashboard starting on 0.0.0.0:8080
+2026-04-06 17:15:45 - root - INFO - Access dashboard at: http://localhost:8080
+2026-04-06 17:15:45 - root - INFO - Webhook endpoint: http://localhost:8080/webhook
+2026-04-06 17:15:45 - root - INFO - ============================================================
+2026-04-06 17:15:45 - dashboard - INFO - Starting dashboard on 0.0.0.0:8080
+2026-04-06 17:15:45 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://172.29.140.0:8080
+2026-04-06 17:15:45 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "GET / HTTP/1.1" 200 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "[36mGET /static/css/dashboard.css HTTP/1.1[0m" 304 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "GET /api/exchanges HTTP/1.1" 200 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "GET /api/trading-settings HTTP/1.1" 200 -
+2026-04-06 17:15:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:47] "GET /api/risk-management HTTP/1.1" 200 -
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:15:48 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db298a10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:15:48 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db298a10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:15:48 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:15:48 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:48] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:15:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:52] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:15:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:52] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:15:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:57] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:15:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:57] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:15:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:15:57] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:02] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:02] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:07] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:07] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:07] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:12] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:12] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:17] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:16:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:17] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:17] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:17 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29ab10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:17 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29ab10>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:17 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:16:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:17] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:16:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:17] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:21 - dashboard - INFO - ✅ Configuration saved successfully to dashboard_config.json
+2026-04-06 17:16:21 - dashboard - INFO -    mexc: enabled=False, has_key=False, has_secret=False
+2026-04-06 17:16:21 - dashboard - INFO -    alpaca: enabled=False, has_key=False, has_secret=False
+2026-04-06 17:16:21 - dashboard - INFO -    ibkr: enabled=False, has_key=False, has_secret=False
+2026-04-06 17:16:21 - dashboard - INFO -    bybit: enabled=True, has_key=False, has_secret=False
+2026-04-06 17:16:21 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:21] "POST /api/exchanges/bybit/toggle HTTP/1.1" 200 -
+2026-04-06 17:16:21 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29b890>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:21 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29b890>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:21 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:16:21 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:21] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:16:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:22] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:22] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:27] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:27] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:27] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:32] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:32] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:36 - dashboard - INFO - 🧪 Testing Bybit: base_url=https://api-testnet.bybit.com, testnet=False, mode=futures, proxy=no
+2026-04-06 17:16:36 - bybit_client - INFO - 🔑 Loaded Bybit API Key: stUJBP...rbFR (length: 18)
+2026-04-06 17:16:36 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: nsWgMO...6bt1 (length: 36)
+2026-04-06 17:16:36 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 17:16:36 - bybit_client - INFO -    Trading mode: FUTURES (leverage=1x for futures)
+2026-04-06 17:16:36 - bybit_client - ERROR - Bybit API Error (non-JSON): 
+2026-04-06 17:16:36 - bybit_client - ERROR - Bybit API Error: HTTP 401: 
+2026-04-06 17:16:36 - bybit_client - ERROR - Request URL: https://api-testnet.bybit.com/v5/account/wallet-balance?accountType=UNIFIED
+2026-04-06 17:16:36 - bybit_client - ERROR - Request Method: GET
+2026-04-06 17:16:36 - bybit_client - ERROR - Request Params: {
+  "accountType": "UNIFIED"
+}
+2026-04-06 17:16:36 - bybit_client - ERROR - Connection validation failed: Bybit API Error: HTTP 401: 
+2026-04-06 17:16:36 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:36] "[35m[1mPOST /api/test-connection/bybit HTTP/1.1[0m" 500 -
+2026-04-06 17:16:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:37] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:37] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:37] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:37 - dashboard - INFO - 🧪 Testing Bybit: base_url=https://api-testnet.bybit.com, testnet=False, mode=futures, proxy=no
+2026-04-06 17:16:37 - bybit_client - INFO - 🔑 Loaded Bybit API Key: stUJBP...rbFR (length: 18)
+2026-04-06 17:16:37 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: nsWgMO...6bt1 (length: 36)
+2026-04-06 17:16:37 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 17:16:37 - bybit_client - INFO -    Trading mode: FUTURES (leverage=1x for futures)
+2026-04-06 17:16:38 - bybit_client - ERROR - Bybit API Error (non-JSON): 
+2026-04-06 17:16:38 - bybit_client - ERROR - Bybit API Error: HTTP 401: 
+2026-04-06 17:16:38 - bybit_client - ERROR - Request URL: https://api-testnet.bybit.com/v5/account/wallet-balance?accountType=UNIFIED
+2026-04-06 17:16:38 - bybit_client - ERROR - Request Method: GET
+2026-04-06 17:16:38 - bybit_client - ERROR - Request Params: {
+  "accountType": "UNIFIED"
+}
+2026-04-06 17:16:38 - bybit_client - ERROR - Connection validation failed: Bybit API Error: HTTP 401: 
+2026-04-06 17:16:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:38] "[35m[1mPOST /api/test-connection/bybit HTTP/1.1[0m" 500 -
+2026-04-06 17:16:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:40] "[36mGET /static/css/dashboard.css HTTP/1.1[0m" 304 -
+2026-04-06 17:16:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:40] "[33mGET /.well-known/appspecific/com.chrome.devtools.json HTTP/1.1[0m" 404 -
+2026-04-06 17:16:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:42] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:42] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:43 - dashboard - INFO - 🧪 Testing Bybit: base_url=https://api-testnet.bybit.com, testnet=False, mode=futures, proxy=no
+2026-04-06 17:16:43 - bybit_client - INFO - 🔑 Loaded Bybit API Key: stUJBP...rbFR (length: 18)
+2026-04-06 17:16:43 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: nsWgMO...6bt1 (length: 36)
+2026-04-06 17:16:43 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 17:16:43 - bybit_client - INFO -    Trading mode: FUTURES (leverage=1x for futures)
+2026-04-06 17:16:43 - bybit_client - ERROR - Bybit API Error (non-JSON): 
+2026-04-06 17:16:43 - bybit_client - ERROR - Bybit API Error: HTTP 401: 
+2026-04-06 17:16:43 - bybit_client - ERROR - Request URL: https://api-testnet.bybit.com/v5/account/wallet-balance?accountType=UNIFIED
+2026-04-06 17:16:43 - bybit_client - ERROR - Request Method: GET
+2026-04-06 17:16:43 - bybit_client - ERROR - Request Params: {
+  "accountType": "UNIFIED"
+}
+2026-04-06 17:16:43 - bybit_client - ERROR - Connection validation failed: Bybit API Error: HTTP 401: 
+2026-04-06 17:16:43 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:43] "[35m[1mPOST /api/test-connection/bybit HTTP/1.1[0m" 500 -
+2026-04-06 17:16:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:47] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:16:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:47] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:47] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:47 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29bad0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:47 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29bad0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:16:47 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:16:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:47] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:16:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:47] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:52] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:52] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:16:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:57] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:16:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:57] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:16:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:16:57] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:02] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:02] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:07] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:07] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:07] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:12] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:12] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:17] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:17:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:17] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:17] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:17 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5da0c4080>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:17:17 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5da0c4080>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:17:17 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:17:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:17] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:17:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:17] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:22] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:22] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:27] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:27] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:27] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:32] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:32] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:37] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:37] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:37] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:42] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:42] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:47] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:17:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:47] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:47] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:47 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29b500>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:17:47 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db29b500>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:17:47 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:17:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:47] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:17:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:47] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:52] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:52] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:17:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:57] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:17:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:57] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:17:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:17:57] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:02] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:02] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:07] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:07] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:07] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:12] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:12] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:17] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:18:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:17] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:17] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:17 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5da0c41a0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:18:17 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5da0c41a0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:18:17 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:18:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:17] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:18:17 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:17] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:22] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:22 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:22] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:27] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:27] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:27] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:32] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:32 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:32] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:37] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:37] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:37] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:42] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:42 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:42] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:47] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 17:18:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:47] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:47] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:47 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db299d30>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:18:47 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x74c5db299d30>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 17:18:47 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 17:18:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:47] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 17:18:47 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:47] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:52] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:52 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:52] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:18:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:57] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:18:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:57] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:18:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:18:57] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:19:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:02] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:19:02 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:02] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:19:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:07] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:19:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:07] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 17:19:07 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:07] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 17:19:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:12] "GET /health HTTP/1.1" 200 -
+2026-04-06 17:19:12 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 17:19:12] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:02:51 - root - INFO - ============================================================
+2026-04-06 19:02:51 - root - INFO - Multi-Exchange Trading Bot with Dashboard - Starting...
+2026-04-06 19:02:51 - root - INFO - ============================================================
+2026-04-06 19:02:51 - root - WARNING - bybit is enabled but missing API credentials
+2026-04-06 19:02:51 - root - WARNING - No enabled exchanges found. Please configure exchanges in the dashboard.
+2026-04-06 19:02:51 - root - INFO - Starting dashboard only...
+2026-04-06 19:02:51 - root - INFO - Signal monitor initialized
+2026-04-06 19:02:51 - root - INFO - Webhook handler initialized
+2026-04-06 19:02:51 - root - WARNING - ⚠️  No trading executor available. Please configure exchange API keys in dashboard.
+2026-04-06 19:02:51 - root - WARNING - ⚠️  Set DEMO_MODE=true environment variable to enable demo mode.
+2026-04-06 19:02:51 - dashboard - INFO - ✅ Configuration loaded from dashboard_config.json
+2026-04-06 19:02:51 - dashboard - INFO -    mexc: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:02:51 - dashboard - INFO -    alpaca: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:02:51 - dashboard - INFO -    ibkr: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:02:51 - dashboard - INFO -    bybit: enabled=True, has_key=False, has_secret=False
+2026-04-06 19:02:51 - dashboard - INFO - Demo mode instance created (disabled by default)
+2026-04-06 19:02:51 - root - INFO - ============================================================
+2026-04-06 19:02:51 - root - INFO - Dashboard starting on 0.0.0.0:8080
+2026-04-06 19:02:51 - root - INFO - Access dashboard at: http://localhost:8080
+2026-04-06 19:02:51 - root - INFO - Webhook endpoint: http://localhost:8080/webhook
+2026-04-06 19:02:51 - root - INFO - ============================================================
+2026-04-06 19:02:51 - dashboard - INFO - Starting dashboard on 0.0.0.0:8080
+2026-04-06 19:02:51 - werkzeug - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8080
+ * Running on http://172.29.140.0:8080
+2026-04-06 19:02:51 - werkzeug - INFO - [33mPress CTRL+C to quit[0m
+2026-04-06 19:02:54 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:54] "GET / HTTP/1.1" 200 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "[36mGET /static/css/dashboard.css HTTP/1.1[0m" 304 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "[36mGET /static/js/dashboard.js HTTP/1.1[0m" 304 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "GET /api/exchanges HTTP/1.1" 200 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "GET /api/trading-settings HTTP/1.1" 200 -
+2026-04-06 19:02:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:55] "GET /api/risk-management HTTP/1.1" 200 -
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:02:56 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd443eed0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:02:56 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd443eed0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:02:56 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:02:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:02:56] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:03:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3340e90>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3340e90>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:03:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:25] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:03:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:26 - dashboard - INFO - 🧪 Testing Bybit: base_url=https://api-testnet.bybit.com, testnet=False, mode=futures, proxy=no
+2026-04-06 19:03:26 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:03:26 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:03:26 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:03:26 - bybit_client - INFO -    Trading mode: FUTURES (leverage=1x for futures)
+2026-04-06 19:03:27 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:03:27 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:27] "POST /api/test-connection/bybit HTTP/1.1" 200 -
+2026-04-06 19:03:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:34 - dashboard - INFO - 🧪 Testing Bybit: base_url=https://api-testnet.bybit.com, testnet=False, mode=futures, proxy=no
+2026-04-06 19:03:34 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:03:34 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:03:34 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:03:34 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:03:35 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:03:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:35] "POST /api/test-connection/bybit HTTP/1.1" 200 -
+2026-04-06 19:03:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:36 - dashboard - INFO - 💾 Saved bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:03:36 - dashboard - INFO - 💾 Saved bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:03:36 - dashboard - INFO - ✅ Configuration saved successfully to dashboard_config.json
+2026-04-06 19:03:36 - dashboard - INFO -    mexc: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:03:36 - dashboard - INFO -    alpaca: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:03:36 - dashboard - INFO -    ibkr: enabled=False, has_key=False, has_secret=False
+2026-04-06 19:03:36 - dashboard - INFO -    bybit: enabled=True, has_key=True, has_secret=True
+2026-04-06 19:03:36 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:36] "POST /api/exchanges/bybit HTTP/1.1" 200 -
+2026-04-06 19:03:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:37] "GET /api/exchanges HTTP/1.1" 200 -
+2026-04-06 19:03:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:37] "GET /api/trading-settings HTTP/1.1" 200 -
+2026-04-06 19:03:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:37] "GET /api/risk-management HTTP/1.1" 200 -
+2026-04-06 19:03:37 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:37] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:03:37 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328ef0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:37 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328ef0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:37 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:03:37 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:03:37 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:03:37 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:03:37 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:03:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:38] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:03:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:38] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:38 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:03:38 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:03:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:38] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:03:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:03:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:03:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:03:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f3c50>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f3c50>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:03:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:03:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:03:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:03:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:03:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:03:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:03:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:03:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:03:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:03:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:04:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:01] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:11 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:11] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:21 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:21] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:04:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3342690>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:04:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3342690>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:04:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:04:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:04:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:04:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:04:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:04:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:26] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:04:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:04:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:04:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:31 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:31] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:41 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:41] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:51 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:51] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:04:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:04:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:04:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f3440>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:04:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f3440>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:04:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:04:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:04:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:04:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:04:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:04:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:56] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:04:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:04:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:04:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:04:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:05:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:05:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3342150>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:05:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3342150>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:05:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:05:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:05:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:05:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:05:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:05:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:05:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:05:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:05:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:05:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:05:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:38] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:05:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:05:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd49930e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:05:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd49930e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:05:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:05:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:05:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:05:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:05:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:05:57 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:05:57 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:05:57 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:05:57] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:06:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:01] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:01] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:01] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:06:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b830>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:06:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b830>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:06:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:06:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:06:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:06:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:06:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:06:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:06:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:06:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:06:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:06:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:06:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:06:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328770>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:06:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328770>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:06:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:06:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:06:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:06:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:06:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:06:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:06:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:06:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:06:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:06:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:07:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:07:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3340350>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:07:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3340350>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:07:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:07:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:07:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:07:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:07:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:07:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:07:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:07:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:07:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:51 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:51] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:07:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:07:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:07:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3343fb0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:07:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3343fb0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:07:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:07:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:07:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:07:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:07:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:07:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:56] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:07:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:07:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:07:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:07:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:08:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:01] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:11 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:11] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:21 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:21] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:08:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335c200>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:08:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335c200>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:08:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:08:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:08:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:08:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:08:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:08:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:08:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:08:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:08:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:08:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:08:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:08:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33406e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:08:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33406e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:08:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:08:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:08:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:08:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:08:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:08:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:08:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:08:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:08:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:08:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:09:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:09:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd44df050>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:09:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd44df050>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:09:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:09:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:09:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:09:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:09:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:09:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:09:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:09:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:09:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:09:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:09:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:09:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3329910>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:09:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3329910>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:09:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:09:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:09:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:09:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:09:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:09:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:09:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:09:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:09:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:09:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:10:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:10:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335e810>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:10:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335e810>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:10:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:10:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:10:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:10:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:10:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:10:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:10:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:10:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:10:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:10:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:10:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:10:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328b00>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:10:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3328b00>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:10:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:10:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:10:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:10:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:10:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:10:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:10:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:10:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:10:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:10:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:11:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:11:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b6e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:11:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b6e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:11:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:11:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:11:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:11:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:11:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:11:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:11:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:11:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:11:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:11:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:11:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:11:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33438c0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:11:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33438c0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:11:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:11:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:11:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:11:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:11:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:11:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:11:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:11:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:11:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:11:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:12:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:20] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:12:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33406e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:12:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd33406e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:12:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:12:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:12:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:12:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:12:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:12:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:25] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:12:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:12:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:12:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:30] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:40] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:50] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:12:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:12:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:12:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335c200>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:12:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd335c200>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:12:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:12:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:12:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:12:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:12:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:12:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:55] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:12:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:12:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:12:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:12:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:13:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:00] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:10] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:15] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:15] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:15 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:15] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:20 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:20] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:21 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:21] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:25] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:13:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:25] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:25 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:25] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:25 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b4a0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:13:25 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332b4a0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:13:25 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:13:25 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:13:25 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:13:25 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:13:25 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:13:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:26] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:26 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:13:26 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:13:26 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:26] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:13:30 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:30] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:31 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:31] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:35] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:35] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:35 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:35] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:40 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:40] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:41 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:41] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:45] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:45] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:45 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:45] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:50 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:50] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:51 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:51] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:55] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:13:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:55] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:13:55 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:55] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:13:55 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd4bd32f0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:13:55 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd4bd32f0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:13:55 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:13:55 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:13:55 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:13:55 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:13:55 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:13:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:56] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:13:56 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:13:56 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:13:56 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:13:56] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:14:00 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:00] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:14:01 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:01] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:14:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:05] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:14:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:05] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:14:05 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:05] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:14:10 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:10] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:14:11 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:11] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:14:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:14:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:14:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:38] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:14:38 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3341f70>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:14:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:38] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:14:38 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd3341f70>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:14:38 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:14:38 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:14:38 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:14:38 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:14:38 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:14:39 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:14:39 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:14:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:14:39] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:15:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:15:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:15:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:15:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:15:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:15:38] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:15:38 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f33e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:15:38 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd46f33e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:15:38 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:15:38 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:15:38 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:15:38 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:15:38 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:15:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:15:39] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:15:39 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:15:39 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:15:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:15:39] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:16:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:16:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:16:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:16:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:16:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:16:38] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:16:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:16:38] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:16:38 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332be00>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:16:38 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd332be00>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:16:38 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:16:38 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:16:38 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:16:38 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:16:38 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:16:39 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:16:39 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:16:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:16:39] "GET /api/exchanges/status HTTP/1.1" 200 -
+2026-04-06 19:17:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:17:38] "GET /health HTTP/1.1" 200 -
+2026-04-06 19:17:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:17:38] "GET /api/signals/recent?limit=100&hours=24 HTTP/1.1" 200 -
+2026-04-06 19:17:38 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:17:38] "GET /api/status HTTP/1.1" 200 -
+2026-04-06 19:17:38 - ibkr_client - ERROR - Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd49930e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:17:38 - ibkr_client - ERROR - Authentication check failed: Request error: HTTPSConnectionPool(host='localhost', port=5000): Max retries exceeded with url: /v1/api/iserver/auth/status (Caused by NewConnectionError('<urllib3.connection.HTTPSConnection object at 0x7f7cd49930e0>: Failed to establish a new connection: [Errno 111] Connection refused'))
+2026-04-06 19:17:38 - ibkr_client - WARNING - ⚠️  Make sure IB Gateway or TWS is running and API is enabled
+2026-04-06 19:17:38 - bybit_client - INFO - 🔑 Loaded Bybit API Key: oTNXgM...VtmE (length: 18)
+2026-04-06 19:17:38 - bybit_client - INFO - 🔑 Loaded Bybit API Secret: lkQGhs...jjFp (length: 36)
+2026-04-06 19:17:38 - bybit_client - INFO - 🌐 Bybit Base URL: https://api-testnet.bybit.com (Mainnet)
+2026-04-06 19:17:38 - bybit_client - INFO -    Trading mode: FUTURES (leverage=5x for futures)
+2026-04-06 19:17:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:17:39] "GET /api/signals/status HTTP/1.1" 200 -
+2026-04-06 19:17:39 - bybit_client - INFO - 💰 Account balances: No balances found (all zero)
+2026-04-06 19:17:39 - dashboard - INFO - ✅ bybit connected - Balances: 0 assets
+2026-04-06 19:17:39 - werkzeug - INFO - 127.0.0.1 - - [06/Apr/2026 19:17:39] "GET /api/exchanges/status HTTP/1.1" 200 -

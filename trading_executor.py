@@ -244,6 +244,7 @@ class TradingExecutor:
                             'exchange': self.exchange_name,
                         }
                     logger.info(f"Using leverage {lev}x for {symbol} (set before entry)")
+                logger.info(f"Bybit futures entry: symbol={symbol} leverage={int(getattr(self.client, 'leverage', 1) or 1)}x notional={position_size_usdt}")
                 logger.info(f"Executing BUY order (futures): {symbol}, Position value: {position_size_usdt} USDT notional")
                 order_response = self.client.place_market_buy(symbol, position_size_usdt, price=entry_price)
             else:

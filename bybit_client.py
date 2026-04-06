@@ -198,14 +198,24 @@ class BybitClient:
             return result
             
         except requests.exceptions.HTTPError as e:
-            error_msg = f"HTTP {e.response.status_code}"
+            status_code = e.response.status_code if e.response is not None else 'unknown'
+            error_msg = f"HTTP {status_code}"
             try:
                 error_data = e.response.json()
-                error_msg = error_data.get('retMsg', error_data.get('message', error_msg))
+                ret_msg = (error_data.get('retMsg') or '').strip()
+                api_msg = (error_data.get('message') or '').strip()
+                error_msg = ret_msg or api_msg or error_msg
                 logger.error(f"Bybit API Error Response: {json.dumps(error_data, indent=2)}")
             except:
                 error_text = e.response.text if hasattr(e.response, 'text') else str(e)
-                error_msg = f"{error_msg}: {error_text}"
+                clean_text = (error_text or '').strip()
+                if clean_text:
+                    error_msg = f"{error_msg}: {clean_text}"
+                elif status_code == 401:
+                    error_msg = (
+                        "HTTP 401 Unauthorized (invalid API key/secret, wrong mainnet/testnet "
+                        "environment, missing API permissions, or IP whitelist restriction)"
+                    )
                 logger.error(f"Bybit API Error (non-JSON): {error_text}")
             
             logger.error(f"Bybit API Error: {error_msg}")
@@ -360,6 +370,7 @@ class BybitClient:
             True if successful
         """
         if self.trading_mode != 'futures':
+            logger.info(f"Skipping set-leverage for {symbol}: trading_mode={self.trading_mode}")
             return True
         lev = str(leverage or self.leverage)
         params = {
@@ -369,6 +380,9 @@ class BybitClient:
             'sellLeverage': lev
         }
         try:
+            logger.info(
+                f"Attempting set-leverage: symbol={symbol}, leverage={lev}x, base_url={self.base_url}, testnet={self.testnet}, mode={self.trading_mode}"
+            )
             self._make_request('POST', '/v5/position/set-leverage', params=params, signed=True)
             logger.info(f"✅ Set leverage {lev}x for {symbol} (buy/sell)")
             return True

@@ -200,6 +200,7 @@ class WebhookHandler:
                 symbol_norm = str(symbol).strip().upper().replace(' ', '') if symbol else ''
                 # Base form for matching: BTCUSDT.P and BTCUSDT both map to BTCUSDT
                 symbol_base = symbol_norm[:-2] if symbol_norm.endswith('.P') else symbol_norm
+                logger.info(f"Signal routing: raw_symbol={symbol}, normalized={symbol_norm}, base={symbol_base}")
                 dashboard_config = self._get_dashboard_config() or {}
                 exchanges_cfg = dashboard_config.get('exchanges', {})
                 
@@ -209,6 +210,12 @@ class WebhookHandler:
                     allowed = exchanges_cfg.get(ex_name, {}).get('symbols', []) or []
                     normalized = {str(s).strip().upper().replace(' ', '') for s in allowed if s}
                     allowed_bases = {s[:-2] if s.endswith('.P') else s for s in normalized}
+                    if not allowed_bases:
+                        logger.info(f"Symbol routing: {ex_name} has no configured symbols; this exchange will not receive trades")
+                    else:
+                        logger.info(
+                            f"Symbol routing: {ex_name} allowed={sorted(allowed_bases)} incoming={symbol_base} match={symbol_base in allowed_bases if symbol_base else False}"
+                        )
                     if allowed_bases and symbol_base and symbol_base in allowed_bases:
                         executors_to_use.append((ex_name, executor))
                 
@@ -252,6 +259,8 @@ class WebhookHandler:
                         logger.error(f"❌ {ex_name}: {e}", exc_info=True)
                         if first_error is None:
                             first_error = err
+
+                logger.info(f"Execution summary: symbol={symbol_norm or symbol}, selected_exchanges={len(executors_to_use)}, success={any_success}")
                 
                 self.signal_monitor.add_signal(signal_data, executed=any_success, error=first_error if not any_success else None)
                 return jsonify({

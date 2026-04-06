@@ -1,0 +1,58 @@
+{
+  "exchanges": {
+    "mexc": {
+      "enabled": false,
+      "api_key": "",
+      "api_secret": "",
+      "base_url": "https://api.mexc.com",
+      "name": "MEXC",
+      "paper_trading": false,
+      "sub_account_id": "",
+      "use_sub_account": false,
+      "symbols": []
+    },
+    "alpaca": {
+      "enabled": false,
+      "api_key": "",
+      "api_secret": "",
+      "base_url": "https://paper-api.alpaca.markets",
+      "name": "Alpaca",
+      "paper_trading": true,
+      "symbols": []
+    },
+    "ibkr": {
+      "enabled": false,
+      "api_key": "",
+      "api_secret": "",
+      "base_url": "https://localhost:5000",
+      "name": "Interactive Brokers",
+      "account_id": "",
+      "use_paper": false,
+      "leverage": 1,
+      "symbols": []
+    },
+    "bybit": {
+      "enabled": true,
+      "api_key": "oTNXgMbCiw8YKyVtmE",
+      "api_secret": "lkQGhsrUpxui0WvpcdCBgVHCaVzLEBoejjFp",
+      "base_url": "https://api-testnet.bybit.com",
+      "name": "Bybit",
+      "testnet": false,
+      "trading_mode": "futures",
+      "leverage": 5,
+      "proxy": "",
+      "symbols": []
+    }
+  },
+  "trading_settings": {
+    "position_size_percent": 20.0,
+    "position_size_fixed": "",
+    "use_percentage": true,
+    "webhook_port": 5000,
+    "webhook_host": "0.0.0.0",
+    "warn_existing_positions": true
+  },
+  "risk_management": {
+    "stop_loss_percent": 5.0
+  }
+}
