@@ -1,0 +1,297 @@
+//@version=5
+strategy("WT + BB + RSI Trading Strategy", shorttitle="WT+BB+RSI Strategy", overlay=true, 
+     initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=20)
+
+// ============================================================================
+// TRADING RULES SPECIFICATION
+// ============================================================================
+// Timeframe: 4 HOUR
+//
+// BUY SIGNAL:
+// A - First trigger: Green dot (WT cross up)
+// B - BB BUY signal: On green dot, 1 candle before, or 1 candle after
+// C - RSI >= 54: On green dot or after, NOT before
+// All 3 signals must be confirmed
+//
+// SELL SIGNAL:
+// A - First trigger: Red dot (WT cross down)
+// B - BB SELL signal: On red dot, 1 candle before, or 1 candle after
+// C - RSI <= 44: On red dot or after, NOT before
+// All 3 signals must be confirmed
+//
+// Entry: After current candle close, next candle open
+// Stop Loss: 5% (BUY: below entry, SELL: above entry)
+// After TP1: Move stop loss to entry
+//
+// Take Profit Levels:
+// TP1: 1% (10% of position)
+// TP2: 2% (15% of position)
+// TP3: 5% (35% of position)
+// TP4: 6.5% (35% of position)
+// TP5: Runner (5% of position) - manual close
+// ============================================================================
+
+// ============================================================================
+// INPUT PARAMETERS
+// ============================================================================
+
+// WaveTrend Parameters
+wt_channel_length = input.int(10, title="WT Channel Length", minval=1)
+wt_average_length = input.int(21, title="WT Average Length", minval=1)
+
+// Bollinger Bands Parameters
+bb_length = input.int(20, title="BB Length", minval=1)
+bb_mult = input.float(2.0, title="BB Multiplier", step=0.1)
+bb_source = input.source(close, title="BB Source")
+
+// Moving Average Parameters
+ma_length = input.int(20, title="MA Length", minval=1)
+ma_type = input.string("EMA", title="MA Type", options=["SMA", "EMA", "WMA", "RMA"])
+
+// RSI Parameters
+rsi_length = input.int(12, title="RSI Length", minval=1)
+rsi_buy_threshold = input.float(54.0, title="RSI Buy Threshold (>=)", minval=0, maxval=100, step=0.1)
+rsi_sell_threshold = input.float(44.0, title="RSI Sell Threshold (<=)", minval=0, maxval=100, step=0.1)
+
+// Position Sizing
+position_size_pct = input.int(20, title="Position Size (% of Account)", minval=20, maxval=100, step=1)
+
+// Stop Loss and Take Profit
+stop_loss_pct = input.float(5.0, title="Stop Loss %", minval=0.1, maxval=10.0, step=0.1)
+tp1_pct = input.float(1.0, title="Take Profit 1 %", minval=0.1, maxval=5.0, step=0.1)
+tp2_pct = input.float(2.0, title="Take Profit 2 %", minval=0.1, maxval=10.0, step=0.1)
+tp3_pct = input.float(5.0, title="Take Profit 3 %", minval=0.1, maxval=15.0, step=0.1)
+tp4_pct = input.float(6.5, title="Take Profit 4 %", minval=0.1, maxval=20.0, step=0.1)
+
+// Display Options
+show_wt_dots = input.bool(true, title="Show WT Cross Dots")
+show_signals = input.bool(true, title="Show Buy/Sell Signals")
+
+// ============================================================================
+// WAVETREND CALCULATION
+// ============================================================================
+
+ap = hlc3
+esa = ta.ema(ap, wt_channel_length)
+d = ta.ema(math.abs(ap - esa), wt_channel_length)
+ci = (ap - esa) / (0.015 * d)
+tci = ta.ema(ci, wt_average_length)
+
+wt1 = tci
+wt2 = ta.ema(tci, wt_average_length)
+
+// WT Cross Signals (on confirmed candles only)
+wt_cross_up = barstate.isconfirmed and ta.crossover(wt1, wt2)
+wt_cross_down = barstate.isconfirmed and ta.crossunder(wt1, wt2)
+
+// ============================================================================
+// BOLLINGER BANDS AND MOVING AVERAGE
+// ============================================================================
+
+ideal_bb_basis = ta.ema(bb_source, bb_length)
+ideal_bb_dev = bb_mult * ta.stdev(bb_source, bb_length)
+ideal_bb_upper = ideal_bb_basis + ideal_bb_dev
+ideal_bb_lower = ideal_bb_basis - ideal_bb_dev
+
+ma_value = ma_type == "SMA" ? ta.sma(bb_source, ma_length) : 
+           ma_type == "EMA" ? ta.ema(bb_source, ma_length) : 
+           ma_type == "WMA" ? ta.wma(bb_source, ma_length) : 
+           ta.rma(bb_source, ma_length)
+
+// BB Buy/Sell Conditions
+bb_buy_condition = close > ma_value
+bb_sell_condition = close < ma_value
+
+// ============================================================================
+// RSI CALCULATION
+// ============================================================================
+
+rsi = ta.rsi(close, rsi_length)
+
+rsi_buy_condition = rsi >= rsi_buy_threshold  // RSI >= 54
+rsi_sell_condition = rsi <= rsi_sell_threshold  // RSI <= 44
+
+// ============================================================================
+// SIGNAL LOGIC - EXACT RULES IMPLEMENTATION
+// ============================================================================
+
+// Track WT cross bar index (when cross occurred)
+var int wt_buy_cross_bar = na
+var int wt_sell_cross_bar = na
+
+// Update WT cross bar index when cross occurs
+if wt_cross_up
+    wt_buy_cross_bar := bar_index
+
+if wt_cross_down
+    wt_sell_cross_bar := bar_index
+
+// BUY SIGNAL LOGIC
+// A - WT cross up occurred (green dot)
+// B - BB condition: On green dot, 1 candle before, or 1 candle after
+// C - RSI >= 54: On green dot or after, NOT before
+
+final_buy_signal = false
+if not na(wt_buy_cross_bar)
+    bars_since_cross = bar_index - wt_buy_cross_bar
+    
+    // Check if we're within the 3-candle window (-1, 0, +1)
+    if bars_since_cross >= -1 and bars_since_cross <= 1
+        // BB condition can be valid in entire window (-1, 0, +1)
+        bb_valid = bb_buy_condition
+        
+        // RSI condition can only be valid on cross (0) or after (+1), NOT before
+        rsi_valid = false
+        if bars_since_cross >= 0  // On cross or after
+            rsi_valid := rsi_buy_condition
+        
+        // Signal fires when both BB and RSI are valid
+        if bb_valid and rsi_valid
+            final_buy_signal := true
+
+// Reset buy cross bar after window expires
+if not na(wt_buy_cross_bar) and bar_index > wt_buy_cross_bar + 1
+    wt_buy_cross_bar := na
+
+// SELL SIGNAL LOGIC
+// A - WT cross down occurred (red dot)
+// B - BB condition: On red dot, 1 candle before, or 1 candle after
+// C - RSI <= 44: On red dot or after, NOT before
+
+final_sell_signal = false
+if not na(wt_sell_cross_bar)
+    bars_since_cross = bar_index - wt_sell_cross_bar
+    
+    // Check if we're within the 3-candle window (-1, 0, +1)
+    if bars_since_cross >= -1 and bars_since_cross <= 1
+        // BB condition can be valid in entire window (-1, 0, +1)
+        bb_valid = bb_sell_condition
+        
+        // RSI condition can only be valid on cross (0) or after (+1), NOT before
+        rsi_valid = false
+        if bars_since_cross >= 0  // On cross or after
+            rsi_valid := rsi_sell_condition
+        
+        // Signal fires when both BB and RSI are valid
+        if bb_valid and rsi_valid
+            final_sell_signal := true
+
+// Reset sell cross bar after window expires
+if not na(wt_sell_cross_bar) and bar_index > wt_sell_cross_bar + 1
+    wt_sell_cross_bar := na
+
+// ============================================================================
+// STRATEGY EXECUTION
+// ============================================================================
+
+// Track entry price and TP1 status
+var float entry_price = na
+var float initial_stop_loss = na
+var bool tp1_hit = false
+var float initial_position_size = na
+
+// Entry: After current candle close, next candle open
+// Signal detected on closed candle [1], execute on current bar open
+
+// BUY Entry
+if barstate.isconfirmed and final_buy_signal[1] and strategy.position_size == 0
+    entry_price := close[1]
+    initial_stop_loss := entry_price * (1 - stop_loss_pct / 100)
+    tp1_hit := false
+    initial_position_size := strategy.equity * position_size_pct / 100
+    
+    // Enter long position with specified percentage
+    strategy.entry("BUY", strategy.long, qty_percent=position_size_pct)
+    
+    // Set initial stop loss (5% below entry)
+    strategy.exit("SL", "BUY", stop=initial_stop_loss)
+    
+    // Set take profit levels with partial closes
+    // TP1: 1% (10% of position)
+    strategy.exit("TP1", "BUY", qty_percent=10, limit=entry_price * (1 + tp1_pct / 100))
+    // TP2: 2% (15% of position) 
+    strategy.exit("TP2", "BUY", qty_percent=15, limit=entry_price * (1 + tp2_pct / 100))
+    // TP3: 5% (35% of position)
+    strategy.exit("TP3", "BUY", qty_percent=35, limit=entry_price * (1 + tp3_pct / 100))
+    // TP4: 6.5% (35% of position)
+    strategy.exit("TP4", "BUY", qty_percent=35, limit=entry_price * (1 + tp4_pct / 100))
+    // TP5: Runner (5% remaining) - manual close
+
+// SELL Entry
+if barstate.isconfirmed and final_sell_signal[1] and strategy.position_size == 0
+    entry_price := close[1]
+    initial_stop_loss := entry_price * (1 + stop_loss_pct / 100)
+    tp1_hit := false
+    initial_position_size := strategy.equity * position_size_pct / 100
+    
+    // Enter short position with specified percentage
+    strategy.entry("SELL", strategy.short, qty_percent=position_size_pct)
+    
+    // Set initial stop loss (5% above entry)
+    strategy.exit("SL", "SELL", stop=initial_stop_loss)
+    
+    // Set take profit levels with partial closes
+    // TP1: 1% (10% of position)
+    strategy.exit("TP1", "SELL", qty_percent=10, limit=entry_price * (1 - tp1_pct / 100))
+    // TP2: 2% (15% of position)
+    strategy.exit("TP2", "SELL", qty_percent=15, limit=entry_price * (1 - tp2_pct / 100))
+    // TP3: 5% (35% of position)
+    strategy.exit("TP3", "SELL", qty_percent=35, limit=entry_price * (1 - tp3_pct / 100))
+    // TP4: 6.5% (35% of position)
+    strategy.exit("TP4", "SELL", qty_percent=35, limit=entry_price * (1 - tp4_pct / 100))
+    // TP5: Runner (5% remaining) - manual close
+
+// Move stop loss to entry after TP1 is hit
+// Check if price has reached TP1 level
+if strategy.position_size != 0 and not na(entry_price) and not tp1_hit
+    tp1_price_long = entry_price * (1 + tp1_pct / 100)
+    tp1_price_short = entry_price * (1 - tp1_pct / 100)
+    
+    // Check if TP1 level has been reached
+    tp1_reached = false
+    if strategy.position_size > 0  // Long position
+        tp1_reached := high >= tp1_price_long
+    else  // Short position
+        tp1_reached := low <= tp1_price_short
+    
+    if tp1_reached
+        tp1_hit := true
+        // Update stop loss to entry price (replace existing SL order)
+        if strategy.position_size > 0  // Long position
+            strategy.exit("SL", "BUY", stop=entry_price)
+        else  // Short position
+            strategy.exit("SL", "SELL", stop=entry_price)
+
+// Reset tracking variables when position closes
+if strategy.position_size == 0
+    entry_price := na
+    initial_stop_loss := na
+    tp1_hit := false
+    initial_position_size := na
+
+// ============================================================================
+// VISUALIZATION
+// ============================================================================
+
+// Plot WT dots
+plotshape(show_wt_dots and wt_cross_up, style=shape.circle, location=location.belowbar, 
+     color=color.green, size=size.small, title="WT Buy Cross")
+plotshape(show_wt_dots and wt_cross_down, style=shape.circle, location=location.abovebar, 
+     color=color.red, size=size.small, title="WT Sell Cross")
+
+// Plot Buy/Sell signals
+plotshape(show_signals and final_buy_signal, style=shape.labelup, location=location.belowbar, 
+     color=color.green, textcolor=color.white, text="BUY", size=size.normal, title="Buy Signal")
+plotshape(show_signals and final_sell_signal, style=shape.labeldown, location=location.abovebar, 
+     color=color.red, textcolor=color.white, text="SELL", size=size.normal, title="Sell Signal")
+
+// Plot entry price and stop loss
+plot(strategy.position_size > 0 ? entry_price : na, "Entry Price", color=color.blue, linewidth=2)
+plot(strategy.position_size > 0 ? stop_loss_price : na, "Stop Loss", color=color.red, linewidth=1, style=plot.style_linebr)
+
+// Plot take profit levels
+plot(strategy.position_size > 0 ? entry_price * (1 + tp1_pct / 100) : na, "TP1", color=color.green, linewidth=1)
+plot(strategy.position_size > 0 ? entry_price * (1 + tp2_pct / 100) : na, "TP2", color=color.green, linewidth=1)
+plot(strategy.position_size > 0 ? entry_price * (1 + tp3_pct / 100) : na, "TP3", color=color.green, linewidth=1)
+plot(strategy.position_size > 0 ? entry_price * (1 + tp4_pct / 100) : na, "TP4", color=color.green, linewidth=1)
+

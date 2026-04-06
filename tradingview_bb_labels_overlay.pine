@@ -1,0 +1,90 @@
+//@version=5
+indicator("Ideal BB Buy/Sell Labels", shorttitle="BB Labels", overlay=true)
+
+// ============================================================================
+// INPUT PARAMETERS - Match main indicator settings
+// ============================================================================
+
+// Ideal Bollinger Bands Parameters
+bb_length = input.int(20, title="BB Length", minval=1)
+bb_mult = input.float(2.0, title="BB Multiplier", step=0.1)
+bb_source = input.source(close, title="BB Source")
+
+// Moving Average Parameters
+ma_length = input.int(20, title="MA Length", minval=1)
+ma_type = input.string("EMA", title="MA Type", options=["SMA", "EMA", "WMA", "RMA"])
+
+// Label Display Options
+show_buy_labels = input.bool(true, title="Show Buy Labels")
+show_sell_labels = input.bool(true, title="Show Sell Labels")
+label_size = input.string("Normal", title="Label Size", options=["Tiny", "Small", "Normal", "Large", "Huge"])
+
+// ============================================================================
+// IDEAL BOLLINGER BANDS WITH MA CALCULATION
+// ============================================================================
+
+// Ideal BB Bands (using EMA for smoother bands)
+ideal_bb_basis = ta.ema(bb_source, bb_length)
+ideal_bb_dev = bb_mult * ta.stdev(bb_source, bb_length)
+ideal_bb_upper = ideal_bb_basis + ideal_bb_dev
+ideal_bb_lower = ideal_bb_basis - ideal_bb_dev
+
+// Moving Average Calculation
+ma_value = ma_type == "SMA" ? ta.sma(bb_source, ma_length) : 
+           ma_type == "EMA" ? ta.ema(bb_source, ma_length) : 
+           ma_type == "WMA" ? ta.wma(bb_source, ma_length) : 
+           ta.rma(bb_source, ma_length)
+
+// ============================================================================
+// BUY/SELL SIGNAL LOGIC
+// ============================================================================
+
+// Buy Signal: Price crosses above MA
+bb_buy_signal = ta.crossover(close, ma_value)
+
+// Sell Signal: Price crosses below MA
+bb_sell_signal = ta.crossunder(close, ma_value)
+
+// ============================================================================
+// BUY/SELL LABELS ON PRICE CHART
+// ============================================================================
+
+// Convert label size string to size constant
+label_size_val = label_size == "Tiny" ? size.tiny : 
+                 label_size == "Small" ? size.small : 
+                 label_size == "Normal" ? size.normal : 
+                 label_size == "Large" ? size.large : 
+                 size.huge
+
+// Buy Labels - Green labels below price bars
+if show_buy_labels and bb_buy_signal
+    label.new(bar_index, low, "BUY", 
+              color=color.new(color.green, 0), 
+              textcolor=color.white, 
+              style=label.style_label_up, 
+              size=label_size_val)
+
+// Sell Labels - Red labels above price bars
+if show_sell_labels and bb_sell_signal
+    label.new(bar_index, high, "SELL", 
+              color=color.new(color.red, 0), 
+              textcolor=color.white, 
+              style=label.style_label_down, 
+              size=label_size_val)
+
+// ============================================================================
+// ALERTS
+// ============================================================================
+
+alertcondition(bb_buy_signal, title="BB Buy Signal", message="Ideal BB Buy Signal: Price crossed above MA")
+alertcondition(bb_sell_signal, title="BB Sell Signal", message="Ideal BB Sell Signal: Price crossed below MA")
+
+
+
+
+
+
+
+
+
+

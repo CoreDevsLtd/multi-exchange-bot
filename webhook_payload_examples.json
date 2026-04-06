@@ -1,0 +1,100 @@
+{
+  "examples": {
+    "buy_signal": {
+      "symbol": "BTCUSDT",
+      "time": "2024-01-15T10:30:00Z",
+      "timestamp": 1705315800000,
+      "signal": "BUY",
+      "indicators": {
+        "wt": {
+          "flag": true,
+          "wt1": 45.23,
+          "wt2": 42.15,
+          "cross_type": "BULLISH",
+          "window_active": true
+        },
+        "bb": {
+          "flag": true,
+          "upper": 45230.50,
+          "lower": 44800.25,
+          "basis": 45015.38,
+          "ma_value": 45020.00,
+          "percent_b": 0.65
+        },
+        "rsi": {
+          "value": 58.5,
+          "buy_threshold": 54.0,
+          "sell_threshold": 43.0,
+          "condition_met": true
+        }
+      },
+      "price": {
+        "close": 45025.75,
+        "open": 44980.50,
+        "high": 45100.00,
+        "low": 44950.25
+      },
+      "strategy": {
+        "entry_type": "NEXT_CANDLE_OPEN",
+        "all_conditions_met": true
+      },
+      "metadata": {
+        "timeframe": "15m",
+        "strategy_version": "1.0.0"
+      }
+    },
+    "sell_signal": {
+      "symbol": "ETHUSDT",
+      "time": "2024-01-15T14:45:00Z",
+      "timestamp": 1705331100000,
+      "signal": "SELL",
+      "indicators": {
+        "wt": {
+          "flag": false,
+          "wt1": -38.92,
+          "wt2": -35.67,
+          "cross_type": "BEARISH",
+          "window_active": true
+        },
+        "bb": {
+          "flag": false,
+          "upper": 2850.75,
+          "lower": 2780.25,
+          "basis": 2815.50,
+          "ma_value": 2810.00,
+          "percent_b": 0.35
+        },
+        "rsi": {
+          "value": 38.2,
+          "buy_threshold": 54.0,
+          "sell_threshold": 43.0,
+          "condition_met": true
+        }
+      },
+      "price": {
+        "close": 2805.50,
+        "open": 2820.75,
+        "high": 2835.00,
+        "low": 2795.25
+      },
+      "strategy": {
+        "entry_type": "NEXT_CANDLE_OPEN",
+        "all_conditions_met": true
+      },
+      "metadata": {
+        "timeframe": "15m",
+        "strategy_version": "1.0.0"
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+

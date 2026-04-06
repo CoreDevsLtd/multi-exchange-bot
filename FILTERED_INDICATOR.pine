@@ -1,0 +1,144 @@
+//@version=4
+study("CUSTOM IDEAL BB + RSI + WT (STRICT LABEL LOCK v3 FINAL)", overlay=true)
+
+// =====================
+// NMA
+// =====================
+length1 = input(120)
+length2 = input(12)
+maInput = input("EMA", options=["EMA","SMA","VWMA","WMA"])
+src = hl2
+getMA(s,l)=>maInput=="EMA"?ema(s,l):maInput=="SMA"?sma(s,l):maInput=="VWMA"?vwma(s,l):wma(s,l)
+getNMA(s,l1,l2)=>(1+(l1/l2*(l1-1)/(l1-(l1/l2))))*getMA(s,l1)-(l1/l2*(l1-1)/(l1-(l1/l2)))*getMA(getMA(s,l1),l2)
+plot(getNMA(src,length1,length2), color=color.black, linewidth=2)
+
+// =====================
+// ORIGINAL DIDI BAM LABEL LOGIC (EXACT MATCH)
+// =====================
+lengthhull = input(24)
+gain = input(10000)
+labelOffset = -1
+
+hma(_src, _len) =>
+    wma((2 * wma(_src, _len / 2)) - wma(_src, _len), round(sqrt(_len)))
+
+hma3(_src, _len) =>
+    p = _len/2
+    wma(wma(close,p/3)*3 - wma(close,p/2) - wma(close,p), p)
+
+kahlman(x, g) =>
+    kf = 0.0
+    dk = x - nz(kf[1], x)
+    smooth = nz(kf[1], x) + dk*sqrt((g/10000)*2)
+    velo = 0.0
+    velo := nz(velo[1], 0) + ((g/10000)*dk)
+    kf := smooth + velo
+
+a = kahlman(hma(hl2,lengthhull),gain)
+b = kahlman(hma3(hl2,lengthhull),gain)
+
+crossup = b>a and b[1]<a[1]
+crossdn = a>b and a[1]<b[1]
+
+plotshape(crossup ? a : na, location=location.abovebar, style=shape.labelup, color=color.green, text="Buy", textcolor=color.blue, offset=labelOffset, size=size.tiny)
+plotshape(crossdn ? a : na, location=location.belowbar, style=shape.labeldown, color=color.red, text="Sell", textcolor=color.blue, offset=labelOffset, size=size.tiny)
+
+// TRUE label positions
+var int buyLabelBar = na
+var int sellLabelBar = na
+if crossup
+    buyLabelBar := bar_index + labelOffset
+if crossdn
+    sellLabelBar := bar_index + labelOffset
+
+// =====================
+// RSI
+// =====================
+rsiValue = rsi(close,12)
+rsiBuyOk = rsiValue>53 and rsiValue<83
+rsiSellOk = rsiValue<44 and rsiValue>26
+
+// =====================
+// WAVETREND DOTS
+// =====================
+n1 = input(10)
+n2 = input(21)
+ap = hlc3
+esa = ema(ap,n1)
+d = ema(abs(ap-esa),n1)
+ci = (ap-esa)/(0.015*d)
+wt1 = ema(ci,n2)
+wt2 = sma(wt1,4)
+
+wtBullCross = wt1>wt2 and wt1[1]<=wt2[1]
+wtBearCross = wt1<wt2 and wt1[1]>=wt2[1]
+
+var int wtBullBar = na
+var int wtBearBar = na
+if wtBullCross
+    wtBullBar := bar_index
+if wtBearCross
+    wtBearBar := bar_index
+
+// =====================
+// MASTER WINDOWS
+// dot ±1 candle
+// =====================
+allowBefore = 1
+allowAfter  = 1
+
+buyMasterWindow  = not na(wtBullBar) and bar_index >= wtBullBar-allowBefore and bar_index <= wtBullBar+allowAfter
+sellMasterWindow = not na(wtBearBar) and bar_index >= wtBearBar-allowBefore and bar_index <= wtBearBar+allowAfter
+
+// =====================
+// LABEL MUST BE ON DOT OR 1 CANDLE BEFORE
+// =====================
+buyLabelValid =
+     not na(buyLabelBar) and
+     not na(wtBullBar) and
+     buyLabelBar >= wtBullBar-1 and
+     buyLabelBar <= wtBullBar
+
+sellLabelValid =
+     not na(sellLabelBar) and
+     not na(wtBearBar) and
+     sellLabelBar >= wtBearBar-1 and
+     sellLabelBar <= wtBearBar
+
+// =====================
+// PREVENT MULTIPLE ALERTS PER DOT
+// =====================
+var int lastBuyDot = na
+var int lastSellDot = na
+
+buyAlreadyUsed  = not na(lastBuyDot)  and lastBuyDot  == wtBullBar
+sellAlreadyUsed = not na(lastSellDot) and lastSellDot == wtBearBar
+
+// =====================
+// STRUCTURE FIRST (NO RSI YET)
+// =====================
+buyStructureValid  = buyMasterWindow  and buyLabelValid  and not buyAlreadyUsed
+sellStructureValid = sellMasterWindow and sellLabelValid and not sellAlreadyUsed
+
+// =====================
+// RSI CONFIRM AFTER STRUCTURE
+// =====================
+buyFinal  = buyStructureValid  and rsiBuyOk
+sellFinal = sellStructureValid and rsiSellOk
+
+if buyFinal
+    lastBuyDot := wtBullBar
+if sellFinal
+    lastSellDot := wtBearBar
+
+// =====================
+// ALERTS
+// =====================
+plotshape(buyFinal, location=location.bottom, style=shape.circle, color=color.green, text="🔔", size=size.tiny)
+plotshape(sellFinal, location=location.bottom, style=shape.circle, color=color.red, text="🔔", size=size.tiny)
+plotshape(buyFinal, location=location.top, style=shape.circle, color=color.green, text="🔔", size=size.tiny)
+plotshape(sellFinal, location=location.top, style=shape.circle, color=color.red, text="🔔", size=size.tiny)
+
+
+alertcondition(buyFinal, title="BUY", message="BUY")
+alertcondition(sellFinal, title="SELL", message="SELL")

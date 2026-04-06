@@ -1,0 +1,208 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TradingView Webhook Alert Payload",
+  "description": "Structured JSON payload for webhook alerts to external trading bot",
+  "type": "object",
+  "required": [
+    "symbol",
+    "time",
+    "signal",
+    "indicators",
+    "price",
+    "timestamp"
+  ],
+  "properties": {
+    "symbol": {
+      "type": "string",
+      "description": "Trading pair symbol (e.g., BTCUSDT, ETHUSDT)",
+      "example": "BTCUSDT"
+    },
+    "time": {
+      "type": "string",
+      "description": "Human-readable timestamp of the signal",
+      "format": "date-time",
+      "example": "2024-01-15T10:30:00Z"
+    },
+    "timestamp": {
+      "type": "number",
+      "description": "Unix timestamp in milliseconds",
+      "example": 1705315800000
+    },
+    "signal": {
+      "type": "string",
+      "enum": ["BUY", "SELL"],
+      "description": "Trading signal direction"
+    },
+    "indicators": {
+      "type": "object",
+      "description": "Indicator values and flags",
+      "required": ["wt", "bb", "rsi"],
+      "properties": {
+        "wt": {
+          "type": "object",
+          "description": "WaveTrend indicator data",
+          "required": ["flag", "wt1", "wt2", "cross_type"],
+          "properties": {
+            "flag": {
+              "type": "boolean",
+              "description": "WT buy window active (true) or sell window active (false)"
+            },
+            "wt1": {
+              "type": "number",
+              "description": "WT1 value",
+              "example": 45.23
+            },
+            "wt2": {
+              "type": "number",
+              "description": "WT2 value",
+              "example": 42.15
+            },
+            "cross_type": {
+              "type": "string",
+              "enum": ["BULLISH", "BEARISH", "NONE"],
+              "description": "Type of WT cross detected"
+            },
+            "window_active": {
+              "type": "boolean",
+              "description": "Whether WT window is currently active"
+            }
+          }
+        },
+        "bb": {
+          "type": "object",
+          "description": "Bollinger Bands indicator data",
+          "required": ["flag", "upper", "lower", "basis", "ma_value", "percent_b"],
+          "properties": {
+            "flag": {
+              "type": "boolean",
+              "description": "BB buy condition (price > MA) = true, sell condition (price < MA) = false"
+            },
+            "upper": {
+              "type": "number",
+              "description": "Upper Bollinger Band",
+              "example": 45230.50
+            },
+            "lower": {
+              "type": "number",
+              "description": "Lower Bollinger Band",
+              "example": 44800.25
+            },
+            "basis": {
+              "type": "number",
+              "description": "BB basis (middle band)",
+              "example": 45015.38
+            },
+            "ma_value": {
+              "type": "number",
+              "description": "Moving Average value",
+              "example": 45020.00
+            },
+            "percent_b": {
+              "type": "number",
+              "description": "BB Percent B (%B) - position within bands (0-1)",
+              "minimum": 0,
+              "maximum": 1,
+              "example": 0.65
+            }
+          }
+        },
+        "rsi": {
+          "type": "object",
+          "description": "RSI indicator data",
+          "required": ["value", "buy_threshold", "sell_threshold", "condition_met"],
+          "properties": {
+            "value": {
+              "type": "number",
+              "description": "Current RSI value",
+              "minimum": 0,
+              "maximum": 100,
+              "example": 58.5
+            },
+            "buy_threshold": {
+              "type": "number",
+              "description": "RSI buy threshold (default: 54)",
+              "example": 54.0
+            },
+            "sell_threshold": {
+              "type": "number",
+              "description": "RSI sell threshold (default: 43)",
+              "example": 43.0
+            },
+            "condition_met": {
+              "type": "boolean",
+              "description": "Whether RSI condition is met (buy: >= threshold, sell: <= threshold)"
+            }
+          }
+        }
+      }
+    },
+    "price": {
+      "type": "object",
+      "description": "Price data at signal time",
+      "required": ["close", "open", "high", "low"],
+      "properties": {
+        "close": {
+          "type": "number",
+          "description": "Close price of the candle",
+          "example": 45025.75
+        },
+        "open": {
+          "type": "number",
+          "description": "Open price of the candle",
+          "example": 44980.50
+        },
+        "high": {
+          "type": "number",
+          "description": "High price of the candle",
+          "example": 45100.00
+        },
+        "low": {
+          "type": "number",
+          "description": "Low price of the candle",
+          "example": 44950.25
+        }
+      }
+    },
+    "strategy": {
+      "type": "object",
+      "description": "Combined strategy information",
+      "properties": {
+        "entry_type": {
+          "type": "string",
+          "enum": ["NEXT_CANDLE_OPEN"],
+          "description": "Type of entry execution"
+        },
+        "all_conditions_met": {
+          "type": "boolean",
+          "description": "Whether all three indicator conditions are met"
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata",
+      "properties": {
+        "timeframe": {
+          "type": "string",
+          "description": "Chart timeframe",
+          "example": "15m"
+        },
+        "strategy_version": {
+          "type": "string",
+          "description": "Strategy version identifier",
+          "example": "1.0.0"
+        }
+      }
+    }
+  }
+}
+
+
+
+
+
+
+
+
+
+

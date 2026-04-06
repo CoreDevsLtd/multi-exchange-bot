@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="format-detection" content="telephone=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Trading Bot Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Header -->
+        <header class="dashboard-header">
+            <h1><i class="fas fa-chart-line"></i> Trading Bot Dashboard</h1>
+            <div style="display: flex; align-items: center; gap: 16px;">
+                <div id="demoModeBadge" style="display: none; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;">
+                    <i class="fas fa-flask"></i> DEMO MODE - Testing Environment
+                </div>
+                <div class="status-indicator">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="statusText">Loading...</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="dashboard-body">
+            <!-- Sidebar Navigation -->
+            <nav class="dashboard-sidebar">
+                <div class="sidebar-title">Navigation</div>
+                <button class="sidebar-item active" data-page="overview" onclick="showPage('overview')">
+                    <i class="fas fa-home"></i>
+                    <span>Overview</span>
+                </button>
+                <button class="sidebar-item" data-page="exchanges" onclick="showPage('exchanges')">
+                    <i class="fas fa-exchange-alt"></i>
+                    <span>Exchanges</span>
+                </button>
+                <button class="sidebar-item" data-page="symbolsRouting" onclick="showPage('symbolsRouting')">
+                    <i class="fas fa-route"></i>
+                    <span>Symbols &amp; Routing</span>
+                </button>
+                <button class="sidebar-item" data-page="tradingSettings" onclick="showPage('tradingSettings')">
+                    <i class="fas fa-sliders-h"></i>
+                    <span>Trading Settings</span>
+                </button>
+                <button class="sidebar-item" data-page="risk" onclick="showPage('risk')">
+                    <i class="fas fa-shield-alt"></i>
+                    <span>Risk Management</span>
+                </button>
+                <button class="sidebar-item" data-page="activity" onclick="showPage('activity')">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>Activity &amp; Logs</span>
+                </button>
+            </nav>
+
+            <!-- Main Content -->
+            <main class="dashboard-main">
+                <!-- Page: Overview -->
+                <div id="page-overview">
+            <!-- Signal Monitoring Section -->
+            <section class="dashboard-section signal-monitoring">
+                <h2><i class="fas fa-satellite-dish"></i> TradingView Signal Status</h2>
+                <div class="signal-status-grid">
+                    <div class="signal-status-card">
+                        <div class="signal-status-header">
+                            <h3>Webhook Connection</h3>
+                            <span class="connection-indicator" id="webhookConnectionIndicator">
+                                <span class="connection-dot"></span>
+                                <span id="webhookStatusText">Checking...</span>
+                            </span>
+                        </div>
+                        <div class="signal-status-body">
+                            <div class="status-item">
+                                <span class="status-label">Status:</span>
+                                <span class="status-value" id="webhookStatus">-</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Last Signal:</span>
+                                <span class="status-value" id="lastSignalTime">Never</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Time Since Last:</span>
+                                <span class="status-value" id="timeSinceLast">-</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="signal-status-card">
+                        <div class="signal-status-header">
+                            <h3>Signal Statistics</h3>
+                        </div>
+                        <div class="signal-status-body">
+                            <div class="status-item">
+                                <span class="status-label">Total Signals:</span>
+                                <span class="status-value" id="totalSignals">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Successful Trades:</span>
+                                <span class="status-value success" id="successfulTrades">0</span>
+                            </div>
+                            <div class="status-item">
+                                <span class="status-label">Failed Trades:</span>
+                                <span class="status-value error" id="failedTrades">0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="recent-signals-section">
+                    <h3><i class="fas fa-history"></i> Recent Signals</h3>
+                    <div class="recent-signals-toolbar" aria-label="Filter and sort recent signals">
+                        <div class="recent-signals-toolbar-row">
+                            <label class="recent-signals-field">
+                                <span>Status</span>
+                                <select id="recentSignalsFilterStatusOverview">
+                                    <option value="all">All</option>
+                                    <option value="executed">Executed</option>
+                                    <option value="failed">Failed</option>
+                                    <option value="pending">Pending</option>
+                                </select>
+                            </label>
+                            <label class="recent-signals-field">
+                                <span>Signal</span>
+                                <select id="recentSignalsFilterSignalOverview">
+                                    <option value="all">All</option>
+                                    <option value="BUY">BUY</option>
+                                    <option value="SELL">SELL</option>
+                                </select>
+                            </label>
+                            <label class="recent-signals-field recent-signals-field-grow">
+                                <span>Symbol contains</span>
+                                <input type="text" id="recentSignalsFilterSymbolOverview" placeholder="e.g. BTC" autocomplete="off">
+                            </label>
+                            <label class="recent-signals-field">
+                                <span>Sort</span>
+                                <select id="recentSignalsSortOverview">
+                                    <option value="time_desc">Time · newest first</option>
+                                    <option value="time_asc">Time · oldest first</option>
+                                    <option value="symbol_asc">Symbol · A–Z</option>
+                                    <option value="symbol_desc">Symbol · Z–A</option>
+                                    <option value="status_group">Status · then time</option>
+                                </select>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="signals-table-container">
+                        <table class="signals-table" id="signalsTable">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Signal</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                    <th>What happened</th>
+                                </tr>
+                            </thead>
+                            <tbody id="signalsTableBody">
+                                <tr>
+                                    <td colspan="6" class="no-signals">No signals received yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+                </div> <!-- /page-overview -->
+
+                <!-- Page: Exchanges -->
+                <div id="page-exchanges" style="display: none;">
+                    <!-- Exchanges Section -->
+                    <section class="dashboard-section" id="exchangesOverviewSection">
+                        <h2><i class="fas fa-exchange-alt"></i> Exchanges</h2>
+                        <div class="exchanges-list" id="exchangesList">
+                            <!-- Exchange list items will be dynamically loaded -->
+                        </div>
+                    </section>
+
+                    <!-- Exchange Symbols Management Section (hidden by default, within Exchanges page) -->
+                    <section class="dashboard-section" id="exchangeSymbolsSection" style="display: none;">
+                <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+                    <div>
+                        <button class="btn btn-sm" onclick="closeSymbolsManager()" style="margin-bottom: 6px;">
+                            <i class="fas fa-arrow-left"></i> Back to Exchanges
+                        </button>
+                        <h2 id="exchangeSymbolsTitle" style="margin-top: 4px;">
+                            <i class="fas fa-list"></i> Manage Symbols
+                        </h2>
+                    </div>
+                </div>
+                
+                <!-- Exchange Info (read-only) -->
+                <div id="exchangeSymbolsInfo" style="margin-bottom: 12px; font-size: 13px; color: var(--text-secondary);">
+                    <!-- Filled by JS -->
+                </div>
+                
+                <!-- Allowed Symbols Table -->
+                <div class="symbols-management">
+                    <h3 style="font-size: 14px; margin-bottom: 6px;">Allowed Symbols</h3>
+                    <div class="signals-table-container">
+                        <table class="signals-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40%;">Symbol</th>
+                                    <th style="width: 30%;">Status</th>
+                                    <th style="width: 30%;">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exchangeSymbolsTableBody">
+                                <tr>
+                                    <td colspan="3" class="no-signals">No symbols configured yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Add Symbol Form - TradingView-style search -->
+                <div style="margin-top: 16px;">
+                    <h3 style="font-size: 14px; margin-bottom: 6px;">Add Symbol</h3>
+                    <div class="symbol-search-wrapper">
+                        <div class="symbol-search-input-wrap">
+                            <i class="fas fa-search symbol-search-icon"></i>
+                            <input type="text" id="exchangeSymbolInput" class="symbol-search-input" placeholder="Search symbols from market..." autocomplete="off">
+                            <div id="symbolSearchDropdown" class="symbol-search-dropdown" style="display: none;"></div>
+                        </div>
+                        <small class="symbol-search-hint">Type to search symbols from the exchange market. Select from dropdown to add.</small>
+                    </div>
+                </div>
+                    </section>
+                </div> <!-- /page-exchanges -->
+
+                <!-- Page: Symbols & Routing (global overview) -->
+                <div id="page-symbolsRouting" style="display: none;">
+                    <section class="dashboard-section">
+                        <h2><i class="fas fa-route"></i> Symbols &amp; Routing</h2>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 8px;">
+                            Overview of which exchanges are configured to trade which symbols.
+                        </p>
+                        <div class="signals-table-container">
+                            <table class="signals-table">
+                                <thead>
+                                    <tr>
+                                        <th>Exchange</th>
+                                        <th>Environment</th>
+                                        <th>Symbol</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="symbolsRoutingTableBody">
+                                    <tr>
+                                        <td colspan="3" class="no-signals">No symbols configured yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                </div> <!-- /page-symbolsRouting -->
+
+                <!-- Page: Trading Activity / Demo -->
+                <div id="page-activity" style="display: none;">
+                    <!-- Recent Signals (always visible) -->
+                    <section class="dashboard-section" id="activityRecentSignalsSection">
+                        <h2><i class="fas fa-history"></i> Recent Signals</h2>
+                        <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 12px;">Webhook signals received in the last 24 hours.</p>
+                        <div class="recent-signals-toolbar" aria-label="Filter and sort recent signals">
+                            <div class="recent-signals-toolbar-row">
+                                <label class="recent-signals-field">
+                                    <span>Status</span>
+                                    <select id="recentSignalsFilterStatusActivity">
+                                        <option value="all">All</option>
+                                        <option value="executed">Executed</option>
+                                        <option value="failed">Failed</option>
+                                        <option value="pending">Pending</option>
+                                    </select>
+                                </label>
+                                <label class="recent-signals-field">
+                                    <span>Signal</span>
+                                    <select id="recentSignalsFilterSignalActivity">
+                                        <option value="all">All</option>
+                                        <option value="BUY">BUY</option>
+                                        <option value="SELL">SELL</option>
+                                    </select>
+                                </label>
+                                <label class="recent-signals-field recent-signals-field-grow">
+                                    <span>Symbol contains</span>
+                                    <input type="text" id="recentSignalsFilterSymbolActivity" placeholder="e.g. BTC" autocomplete="off">
+                                </label>
+                                <label class="recent-signals-field">
+                                    <span>Sort</span>
+                                    <select id="recentSignalsSortActivity">
+                                        <option value="time_desc">Time · newest first</option>
+                                        <option value="time_asc">Time · oldest first</option>
+                                        <option value="symbol_asc">Symbol · A–Z</option>
+                                        <option value="symbol_desc">Symbol · Z–A</option>
+                                        <option value="status_group">Status · then time</option>
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="signals-table-container">
+                            <table class="signals-table">
+                                <thead>
+                                    <tr>
+                                        <th>Time</th>
+                                        <th>Symbol</th>
+                                        <th>Signal</th>
+                                        <th>Price</th>
+                                        <th>Status</th>
+                                        <th>What happened</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="activitySignalsTableBody">
+                                    <tr>
+                                        <td colspan="6" class="no-signals">No signals received yet</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </section>
+                    <!-- Trading Activity Section (Demo mode only) -->
+                    <section class="dashboard-section" id="tradingActivitySection" style="display: none;">
+                <h2><i class="fas fa-chart-bar"></i> Trading Activity</h2>
+                <div id="tradingStats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px;">
+                    <!-- Stats will be loaded here -->
+                </div>
+                <div>
+                    <h3 style="font-size: 14px; margin-bottom: 8px;">Recent Trades</h3>
+                    <div class="signals-table-container">
+                        <table class="signals-table">
+                            <thead>
+                                <tr>
+                                    <th>Time</th>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Price</th>
+                                    <th>Quantity</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="demoTradesTableBody">
+                                <tr>
+                                    <td colspan="7" class="no-signals">No trades yet</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div style="margin-top: 16px;">
+                    <h3 style="font-size: 14px; margin-bottom: 8px;">Open Positions</h3>
+                    <div class="signals-table-container">
+                        <table class="signals-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Side</th>
+                                    <th>Entry Price</th>
+                                    <th>Current Price</th>
+                                    <th>Quantity</th>
+                                    <th>PnL</th>
+                                </tr>
+                            </thead>
+                            <tbody id="demoPositionsTableBody">
+                                <tr>
+                                    <td colspan="6" class="no-signals">No open positions</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                    </section>
+                </div> <!-- /page-activity -->
+
+                <!-- Page: Trading Settings -->
+                <div id="page-tradingSettings" style="display: none;">
+                    <!-- Trading Settings Section -->
+                    <section class="dashboard-section">
+                        <h2><i class="fas fa-sliders-h"></i> Trading Settings</h2>
+                        <div class="settings-form" id="tradingSettingsForm">
+                            <div class="form-group full-width">
+                                <label>Position Size: <span id="positionSizeValue">20</span>%</label>
+                                <input type="range" id="positionSizePercent" min="5" max="100" step="1" value="20" 
+                                       oninput="document.getElementById('positionSizeValue').textContent = this.value">
+                                <div class="slider-labels">
+                                    <span>5%</span>
+                                    <span>100%</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="usePercentage" checked>
+                                    Use Percentage
+                                </label>
+                            </div>
+                            <div class="form-group">
+                                <label>
+                                    <input type="checkbox" id="warnExistingPositions" checked>
+                                    Warn on Existing Positions
+                                </label>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveTradingSettings()" style="width: 100%; margin-top: 4px;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                    </section>
+                </div> <!-- /page-tradingSettings -->
+
+                <!-- Page: Risk Management -->
+                <div id="page-risk" style="display: none;">
+                    <!-- Risk Management Section -->
+                    <section class="dashboard-section">
+                        <h2><i class="fas fa-shield-alt"></i> Risk Management</h2>
+                        <div class="settings-form" id="riskManagementForm">
+                            <div class="form-group">
+                                <label>Stop Loss (%)</label>
+                                <input type="number" id="stopLossPercent" step="0.1" min="0" max="100" value="5.0">
+                            </div>
+                            <div class="form-group">
+                                <label>TP1: 1% (Close 10%)</label>
+                                <input type="number" id="takeProfit1" step="0.1" min="0" max="100" value="1.0" readonly style="background: var(--bg-tertiary);">
+                            </div>
+                            <div class="form-group">
+                                <label>TP2: 2% (Close 15%)</label>
+                                <input type="number" id="takeProfit2" step="0.1" min="0" max="100" value="2.0" readonly style="background: var(--bg-tertiary);">
+                            </div>
+                            <div class="form-group">
+                                <label>TP3: 5% (Close 35%)</label>
+                                <input type="number" id="takeProfit3" step="0.1" min="0" max="100" value="5.0" readonly style="background: var(--bg-tertiary);">
+                            </div>
+                            <div class="form-group">
+                                <label>TP4: 6.5% (Close 35%)</label>
+                                <input type="number" id="takeProfit4" step="0.1" min="0" max="100" value="6.5" readonly style="background: var(--bg-tertiary);">
+                            </div>
+                            <div class="form-group">
+                                <label>TP5: 8% (Close 50% of remaining)</label>
+                                <input type="number" id="takeProfit5" step="0.1" min="0" max="100" value="8.0" readonly style="background: var(--bg-tertiary);">
+                            </div>
+                            <div class="warning-box" style="margin-top: 8px;">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <div>
+                                    <strong>Critical:</strong> After TP1, stop-loss will automatically move to entry price. This is a hard requirement.
+                                </div>
+                            </div>
+                            <button class="btn btn-primary" onclick="saveRiskManagement()" style="width: 100%; margin-top: 4px;">
+                                <i class="fas fa-save"></i> Save
+                            </button>
+                        </div>
+                    </section>
+                </div> <!-- /page-risk -->
+
+            </main>
+        </div> <!-- /dashboard-body -->
+    </div>
+
+    <!-- Exchange Modal -->
+    <div id="exchangeModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modalTitle">Configure Exchange</h3>
+                <span class="close" onclick="closeModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="exchangeForm">
+                    <input type="hidden" id="exchangeName">
+                    
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="exchangeEnabled">
+                            Enable Exchange
+                        </label>
+                    </div>
+                    
+                    <div class="form-group exchange-credential-field" id="exchangeApiKeyGroup">
+                        <label>API Key</label>
+                        <input type="text" id="exchangeApiKey" placeholder="Enter API Key">
+                    </div>
+                    
+                    <div class="form-group exchange-credential-field" id="exchangeApiSecretGroup">
+                        <label>API Secret</label>
+                        <input type="password" id="exchangeApiSecret" placeholder="Enter API Secret">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Base URL</label>
+                        <input type="text" id="exchangeBaseUrl" placeholder="https://api.mexc.com">
+                    </div>
+                    
+                    <div class="form-group" id="ibkrGatewayGroup" style="display: none;">
+                        <div class="info-box ibkr-info">
+                            <strong>IB Gateway / Client Portal (session login)</strong>
+                            <p>Interactive Brokers does <strong>not</strong> use exchange-style API keys here. The bot’s API calls go to the URL in <strong>Base URL</strong> above (IB Gateway or TWS with Client Portal Web API).</p>
+                            <ol style="margin: 8px 0 8px 18px; font-size: 13px;">
+                                <li>Set <strong>Base URL</strong> to that Gateway. On the same PC as the browser: <code>https://localhost:5000</code> is fine. If the dashboard is <strong>hosted on a server</strong>, <code>localhost</code> in your browser only reaches <em>your</em> PC — expose Gateway with an <strong>HTTPS tunnel</strong> (ngrok, Cloudflare Tunnel, etc.), put that URL in Base URL, and use the same URL so the bot can reach it too.</li>
+                                <li>Start IB Gateway or TWS; enable API / Client Portal on the port that matches the URL.</li>
+                                <li>Click <strong>Open Gateway login</strong> (opens Base URL) — sign in to IBKR — then <strong>Test Connection</strong>.</li>
+                            </ol>
+                            <button type="button" class="btn btn-secondary" onclick="openIbkrGatewayLogin()">
+                                <i class="fas fa-external-link-alt"></i> Open Gateway login (new tab)
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="form-group" id="tradingModeGroup" style="display: none;">
+                        <label>Trading Mode</label>
+                        <select id="exchangeTradingMode">
+                            <option value="spot">Spot</option>
+                            <option value="futures">Futures</option>
+                        </select>
+                        <small>Spot uses no leverage. Futures uses the leverage setting below (where supported by the exchange).</small>
+                    </div>
+                    
+                    <div class="form-group" id="paperTradingGroup" style="display: none;">
+                        <label>
+                            <input type="checkbox" id="exchangePaperTrading">
+                            Paper Trading
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" id="subAccountGroup" style="display: none;">
+                        <label>
+                            <input type="checkbox" id="exchangeUseSubAccount">
+                            Use Sub-Account
+                        </label>
+                        <input type="text" id="exchangeSubAccountId" placeholder="Sub-Account ID (optional)" 
+                               style="margin-top: 8px; display: none;">
+                    </div>
+                    
+                    <div class="form-group" id="leverageGroup" style="display: none;">
+                        <label>Leverage</label>
+                        <input type="number" id="exchangeLeverage" placeholder="1" min="1" max="100" step="1">
+                        <small>Leverage multiplier (1 = no leverage, 2 = 2x, etc.)</small>
+                    </div>
+                    
+                    <div class="form-group" id="proxyGroup" style="display: none;">
+                        <label>Proxy (optional)</label>
+                        <input type="text" id="exchangeProxy" placeholder="http://host:port or socks5://host:port">
+                        <small>Use when deployment region is blocked (403). Route requests through a proxy in an allowed country.</small>
+                    </div>
+                    
+                    <div class="warning-box" id="mexcWarning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>MEXC Real Trading Mode:</strong> This will execute real trades. 
+                        If you have existing positions, we'll notify you before any action is required.
+                    </div>
+                    
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" onclick="testConnection()">
+                            <i class="fas fa-plug"></i> Test Connection
+                        </button>
+                        <button type="button" class="btn btn-primary" onclick="saveExchange()">
+                            <i class="fas fa-save"></i> Save
+                        </button>
+                        <button type="button" class="btn btn-danger" onclick="closeModal()">
+                            Cancel
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+</body>
+</html>
+
