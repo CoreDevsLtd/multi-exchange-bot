@@ -134,12 +134,20 @@ class BybitClient:
         """
         url = f"{self.base_url}{endpoint}"
         params = params or {}
+        method_upper = method.upper()
 
-        # Log business payload for execution visibility (do not log auth headers/signature)
-        is_trade_endpoint = endpoint.startswith('/v5/order') or endpoint.startswith('/v5/position/trading-stop')
-        if is_trade_endpoint:
+        # Log trade write payloads for execution visibility (no auth headers/signature).
+        is_trade_write_endpoint = (
+            method_upper == 'POST'
+            and endpoint in (
+                '/v5/order/create',
+                '/v5/position/trading-stop',
+                '/v5/position/set-leverage',
+            )
+        )
+        if is_trade_write_endpoint:
             logger.info(
-                f"Bybit request payload: method={method.upper()} endpoint={endpoint} payload={json.dumps(params, default=str)}"
+                f"Bybit OUTBOUND: endpoint={endpoint} payload={json.dumps(params, default=str)}"
             )
         
         if signed:
@@ -168,14 +176,14 @@ class BybitClient:
             headers = {'Content-Type': 'application/json'}
         
         try:
-            if method.upper() == 'GET':
+            if method_upper == 'GET':
                 if params:
                     qs = "&".join(f"{k}={v}" for k, v in sorted(params.items()))
                     url = f"{url}?{qs}"
                 response = self.session.get(url, headers=headers, timeout=10)
-            elif method.upper() == 'POST':
+            elif method_upper == 'POST':
                 response = self.session.post(url, json=params, headers=headers, timeout=10)
-            elif method.upper() == 'DELETE':
+            elif method_upper == 'DELETE':
                 response = self.session.delete(url, params=params, headers=headers, timeout=10)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
@@ -188,12 +196,18 @@ class BybitClient:
             if ret_code != 0:
                 ret_msg = result.get('retMsg', 'Unknown error')
                 error_msg = f"Bybit API Error (Code {ret_code}): {ret_msg}"
+                if is_trade_write_endpoint:
+                    logger.error(
+                        f"Bybit INBOUND ERROR: endpoint={endpoint} retCode={ret_code} retMsg={ret_msg} response={json.dumps(result, default=str)}"
+                    )
                 logger.error(f"❌ {error_msg}")
                 logger.error(f"   Response: {json.dumps(result, indent=2)}")
                 raise Exception(error_msg)
 
-            if is_trade_endpoint:
-                logger.info(f"Bybit response payload: endpoint={endpoint} response={json.dumps(result, default=str)}")
+            if is_trade_write_endpoint:
+                logger.info(
+                    f"Bybit INBOUND: endpoint={endpoint} retCode={ret_code} retMsg={result.get('retMsg', '')} response={json.dumps(result, default=str)}"
+                )
             
             return result
             

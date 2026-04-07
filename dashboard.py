@@ -206,19 +206,59 @@ class Dashboard:
         mode = (exchange.get('trading_mode') or 'spot').lower()
         category = 'linear' if mode == 'futures' else 'spot'
         url = f"{base_url}/v5/market/instruments-info"
-        params = {'category': category}
-        resp = requests.get(url, params=params, timeout=10)
-        if resp.status_code != 200:
-            return []
-        data = resp.json()
-        if data.get('retCode') != 0:
-            return []
-        items = data.get('result', {}).get('list', [])
         symbols = []
-        for item in items:
-            sym = item.get('symbol', '')
-            if sym and item.get('status') == 'Trading':
-                symbols.append(sym)
+        seen = set()
+
+        # Spot does not support pagination parameters (cursor/limit) on this endpoint.
+        if category == 'spot':
+            resp = requests.get(url, params={'category': category}, timeout=10)
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+            if data.get('retCode') != 0:
+                return []
+            items = data.get('result', {}).get('list', [])
+            for item in items:
+                sym = item.get('symbol', '')
+                if sym and item.get('status') == 'Trading' and sym not in seen:
+                    symbols.append(sym)
+                    seen.add(sym)
+            return self._filter_symbols(symbols, query, limit)
+
+        # Linear/Inverse/Option can exceed 500 symbols; paginate to avoid missing pairs.
+        cursor = None
+        max_pages = 20
+        pages = 0
+        while pages < max_pages:
+            params = {'category': category, 'limit': 1000}
+            if cursor:
+                params['cursor'] = cursor
+
+            resp = requests.get(url, params=params, timeout=10)
+            if resp.status_code != 200:
+                break
+
+            data = resp.json()
+            if data.get('retCode') != 0:
+                break
+
+            result = data.get('result', {})
+            items = result.get('list', [])
+            for item in items:
+                sym = item.get('symbol', '')
+                if sym and item.get('status') == 'Trading' and sym not in seen:
+                    symbols.append(sym)
+                    seen.add(sym)
+
+            # Early exit when we already have enough query matches for autocomplete.
+            if query and len(self._filter_symbols(symbols, query, limit)) >= limit:
+                break
+
+            cursor = result.get('nextPageCursor')
+            pages += 1
+            if not cursor:
+                break
+
         return self._filter_symbols(symbols, query, limit)
 
     def _fetch_mexc_symbols(self, exchange: dict, query: str, limit: int) -> list:
