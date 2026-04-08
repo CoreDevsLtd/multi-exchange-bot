@@ -1,10 +1,13 @@
+version: '3.8'
+
 services:
-  trading-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file:
-      - .env
+  app:
+    build: .
+    restart: unless-stopped
     ports:
       - "8080:8080"
-    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./:/app:rw
+    command: gunicorn -w 4 -b 0.0.0.0:8080 wsgi:app

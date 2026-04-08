@@ -4,12 +4,9 @@ Web interface for managing API keys, exchanges, and trading settings
 """
 
 import os
-import json
 import logging
 import requests
-from flask import Flask, render_template, request, jsonify, redirect, url_for
-from werkzeug.security import generate_password_hash, check_password_hash
-from functools import wraps
+from flask import Flask, render_template, request, jsonify
 import secrets
 
 logger = logging.getLogger(__name__)
@@ -17,107 +14,28 @@ logger = logging.getLogger(__name__)
 
 class Dashboard:
     """Trading Bot Dashboard"""
-    
-    def __init__(self, config_file: str = 'dashboard_config.json'):
-        """
-        Initialize Dashboard
-        
-        Args:
-            config_file: Path to configuration file
-        """
-        self.app = Flask(__name__, 
-                        template_folder='templates',
-                        static_folder='static')
-        self.config_file = config_file
+
+    def __init__(self):
+        self.app = Flask(__name__,
+                         template_folder='templates',
+                         static_folder='static')
         self.secret_key = os.getenv('DASHBOARD_SECRET_KEY', secrets.token_hex(32))
         self.app.secret_key = self.secret_key
-        
-        # Load configuration
-        self.config = self._load_config()
-        
-        # Initialize demo mode (disabled by default, enable via DEMO_MODE=true env var)
+
+        # Load trading settings from MongoDB central_risk_management
+        self.config = self._load_config_from_mongo()
+
+        # Initialize demo mode (opt-in via DEMO_MODE=true env var)
         from demo_mode import DemoMode
         self.demo_mode = DemoMode()
-        # Demo mode will be enabled in main_with_dashboard.py only if DEMO_MODE=true
-        logger.info("Demo mode instance created (disabled by default)")
-        
-        # Setup routes
+
         self._setup_routes()
     
-    def _deep_merge(self, default: dict, loaded: dict) -> dict:
-        """
-        Deep merge loaded config into default config
-        
-        Args:
-            default: Default configuration dictionary
-            loaded: Loaded configuration dictionary
-            
-        Returns:
-            Merged configuration dictionary
-        """
-        result = default.copy()
-        
-        for key, value in loaded.items():
-            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
-                # Recursively merge nested dictionaries
-                result[key] = self._deep_merge(result[key], value)
-            else:
-                # Overwrite with loaded value
-                result[key] = value
-        
-        return result
-    
-    def _load_config(self) -> dict:
-        """Load configuration from file with proper deep merge"""
-        default_config = {
-            'exchanges': {
-                'mexc': {
-                    'enabled': False,
-                    'api_key': '',
-                    'api_secret': '',
-                    'base_url': 'https://api.mexc.com',
-                    'name': 'MEXC',
-                    'paper_trading': False,
-                    'sub_account_id': '',  # Optional sub-account ID
-                    'use_sub_account': False,
-                    # List of allowed symbols for this exchange (e.g. ["BTCUSDT", "ETHUSDT"])
-                    'symbols': []
-                },
-                'alpaca': {
-                    'enabled': False,
-                    'api_key': '',
-                    'api_secret': '',
-                    'base_url': 'https://paper-api.alpaca.markets',
-                    'name': 'Alpaca',
-                    'paper_trading': True,
-                    'symbols': []
-                },
-                'ibkr': {
-                    'enabled': False,
-                    'api_key': '',
-                    'api_secret': '',
-                    'base_url': 'https://localhost:5000',
-                    'name': 'Interactive Brokers',
-                    'account_id': '',
-                    'use_paper': False,
-                    'leverage': 1,
-                    'symbols': []
-                },
-                'bybit': {
-                    'enabled': False,
-                    'api_key': '',
-                    'api_secret': '',
-                    'base_url': 'https://api.bybit.com',
-                    'name': 'Bybit',
-                    'testnet': False,
-                    'trading_mode': 'spot',  # 'spot' or 'futures'
-                    'leverage': 1,          # Only used for futures mode
-                    'proxy': '',            # Optional: http://host:port for geo-blocked regions
-                    'symbols': []
-                }
-            },
+    def _load_config_from_mongo(self) -> dict:
+        """Load trading settings from MongoDB central_risk_management collection."""
+        defaults = {
             'trading_settings': {
-                'position_size_percent': 20.0,  # Configurable 5-100%, default 20%
+                'position_size_percent': 20.0,
                 'position_size_fixed': '',
                 'use_percentage': True,
                 'webhook_port': 5000,
@@ -128,58 +46,18 @@ class Dashboard:
                 'stop_loss_percent': 5.0
             }
         }
-        
-        if os.path.exists(self.config_file):
-            try:
-                with open(self.config_file, 'r') as f:
-                    loaded_config = json.load(f)
-                    # Deep merge to preserve all saved values
-                    default_config = self._deep_merge(default_config, loaded_config)
-                    logger.info(f"✅ Configuration loaded from {self.config_file}")
-                    # Log loaded exchanges for debugging
-                    for exchange_name, exchange_config in default_config.get('exchanges', {}).items():
-                        has_key = bool(exchange_config.get('api_key'))
-                        has_secret = bool(exchange_config.get('api_secret'))
-                        enabled = exchange_config.get('enabled', False)
-                        logger.info(f"   {exchange_name}: enabled={enabled}, has_key={has_key}, has_secret={has_secret}")
-            except Exception as e:
-                logger.error(f"Error loading config: {e}", exc_info=True)
-        else:
-            logger.info(f"Config file {self.config_file} not found, using defaults")
-        
-        return default_config
-    
-    def _save_config(self):
-        """Save configuration to file"""
         try:
-            # Ensure directory exists
-            config_dir = os.path.dirname(os.path.abspath(self.config_file))
-            if config_dir and not os.path.exists(config_dir):
-                os.makedirs(config_dir, exist_ok=True)
-            
-            # Save with atomic write (write to temp file, then rename)
-            temp_file = f"{self.config_file}.tmp"
-            with open(temp_file, 'w') as f:
-                json.dump(self.config, f, indent=2)
-            
-            # Atomic rename
-            if os.path.exists(temp_file):
-                if os.path.exists(self.config_file):
-                    os.replace(temp_file, self.config_file)
-                else:
-                    os.rename(temp_file, self.config_file)
-            
-            logger.info(f"✅ Configuration saved successfully to {self.config_file}")
-            # Log saved exchanges for verification
-            for exchange_name, exchange_config in self.config.get('exchanges', {}).items():
-                has_key = bool(exchange_config.get('api_key'))
-                has_secret = bool(exchange_config.get('api_secret'))
-                enabled = exchange_config.get('enabled', False)
-                logger.info(f"   {exchange_name}: enabled={enabled}, has_key={has_key}, has_secret={has_secret}")
-            return True
+            from mongo_db import get_central_risk
+            risk = get_central_risk()
+            defaults['trading_settings']['position_size_percent'] = float(risk.get('position_size_percent', 20.0))
+            defaults['trading_settings']['use_percentage'] = bool(risk.get('use_percentage', True))
+            defaults['trading_settings']['warn_existing_positions'] = bool(risk.get('warn_existing_positions', True))
+            defaults['trading_settings']['position_size_fixed'] = risk.get('position_size_fixed', '')
+            defaults['risk_management']['stop_loss_percent'] = float(risk.get('stop_loss_percent', 5.0))
+            logger.info("✅ Configuration loaded from MongoDB central_risk_management")
         except Exception as e:
-            logger.error(f"❌ Error saving config: {e}", exc_info=True)
-            return False
+            logger.warning(f"Could not load config from MongoDB, using defaults: {e}")
+        return defaults
 
     def _fetch_market_symbols(self, exchange_name: str, exchange: dict, query: str, limit: int = 30) -> list:
         """
@@ -304,6 +182,69 @@ class Dashboard:
         return symbols[:limit]
 
 
+    def _check_mongo_exchanges_status(self, mongo_accounts: list) -> dict:
+        """Check connection status for Mongo-backed exchange accounts. Returns status dict keyed by exchange account _id."""
+        status = {}
+        for ex_acc in mongo_accounts:
+            ex_type = (ex_acc.get('type') or '').lower()
+            ex_id = ex_acc.get('_id', ex_type)
+            creds = ex_acc.get('credentials', {}) or {}
+            try:
+                from secrets_manager import decrypt_credentials_dict
+                creds = decrypt_credentials_dict(creds)
+            except Exception:
+                pass
+            api_key = creds.get('api_key', '').strip()
+            api_secret = creds.get('api_secret', '').strip()
+            base_url = ex_acc.get('base_url') or (ex_acc.get('connection_info') or {}).get('base_url', '')
+            exchange_status = {
+                'name': f"{ex_type.upper()} ({ex_id})",
+                'enabled': ex_acc.get('enabled', True),
+                'connected': False,
+                'can_trade': False,
+                'balances': {}
+            }
+            can_validate = (api_key and api_secret) or ex_type == 'ibkr'
+            if can_validate:
+                try:
+                    client = None
+                    if ex_type == 'mexc':
+                        from mexc_client import MEXCClient
+                        client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://api.mexc.com')
+                    elif ex_type == 'alpaca':
+                        from alpaca_client import AlpacaClient
+                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://paper-api.alpaca.markets')
+                    elif ex_type == 'bybit':
+                        from bybit_client import BybitClient
+                        proxy = (ex_acc.get('proxy') or '').strip() or None
+                        client = BybitClient(api_key=api_key, api_secret=api_secret,
+                                             base_url=(base_url or 'https://api.bybit.com').rstrip('/'),
+                                             testnet=ex_acc.get('testnet', False),
+                                             trading_mode=ex_acc.get('trading_mode', 'spot'),
+                                             leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
+                    elif ex_type == 'ibkr':
+                        from ibkr_client import IBKRClient
+                        client = IBKRClient(api_key=api_key or '', api_secret=api_secret or '',
+                                            base_url=(base_url or 'https://localhost:5000').rstrip('/'),
+                                            account_id=ex_acc.get('account_id', ''),
+                                            use_paper=ex_acc.get('use_paper', False),
+                                            leverage=int(ex_acc.get('leverage', 1)))
+                    if client:
+                        validation = client.validate_connection()
+                        exchange_status['connected'] = validation.get('connected', False)
+                        exchange_status['can_trade'] = validation.get('can_trade', False)
+                        if exchange_status['connected']:
+                            try:
+                                exchange_status['balances'] = client.get_main_balances()
+                            except Exception:
+                                exchange_status['balances'] = {}
+                        else:
+                            exchange_status['balances'] = None
+                except Exception as e:
+                    logger.error(f"Status check failed for {ex_id}: {e}", exc_info=True)
+            status[ex_id] = exchange_status
+        return status
+
     def _setup_routes(self):
         """Setup Flask routes"""
         
@@ -314,221 +255,213 @@ class Dashboard:
         
         @self.app.route('/api/exchanges', methods=['GET'])
         def get_exchanges():
-            """Get all exchange configurations"""
-            return jsonify(self.config['exchanges'])
+            """Get all exchange account configurations (enabled and disabled)."""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                exs = list(db.exchange_accounts.find({}))
+                mapped = {}
+                for e in exs:
+                    mapped[e['_id']] = {
+                        'enabled': e.get('enabled', False),
+                        'type': e.get('type', e['_id']),
+                        'api_key': (e.get('credentials') or {}).get('api_key', ''),
+                        'api_secret': '***' if (e.get('credentials') or {}).get('api_secret') else '',
+                        'base_url': e.get('base_url') or (e.get('connection_info') or {}).get('base_url', ''),
+                        'name': e.get('type', e['_id']),
+                        'testnet': e.get('testnet', False),
+                        'trading_mode': e.get('trading_mode', 'spot'),
+                        'leverage': e.get('leverage', 1),
+                        'proxy': e.get('proxy', ''),
+                        'symbols': e.get('symbols') or ([e.get('symbol')] if e.get('symbol') else []),
+                        'account_id': e.get('account_id'),
+                    }
+                return jsonify(mapped)
+            except Exception as ex:
+                logger.error(f"Error reading exchanges from MongoDB: {ex}", exc_info=True)
+                return jsonify({'error': 'Failed to read exchanges from DB'}), 500
         
         @self.app.route('/api/exchanges/<exchange_name>', methods=['GET'])
         def get_exchange(exchange_name):
             """Get specific exchange configuration"""
-            if exchange_name in self.config['exchanges']:
-                exchange_config = self.config['exchanges'][exchange_name].copy()
-                # Return actual API key (needed for display)
-                # Mask API secret for security (show '***' if secret exists)
-                exchange_config['api_secret'] = '***' if exchange_config.get('api_secret') else ''
-                # Log what we're returning (for debugging)
-                logger.debug(f"📤 Returning exchange config for {exchange_name}:")
-                logger.debug(f"   API Key present: {bool(exchange_config.get('api_key'))}")
-                logger.debug(f"   API Key length: {len(exchange_config.get('api_key', ''))}")
-                logger.debug(f"   API Secret present: {bool(exchange_config.get('api_secret') == '***')}")
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+                if not doc:
+                    return jsonify({'error': 'Exchange account not found'}), 404
+                try:
+                    from secrets_manager import decrypt_credentials_dict
+                    creds = decrypt_credentials_dict(doc.get('credentials') or {})
+                except Exception:
+                    creds = doc.get('credentials') or {}
+                exchange_config = {
+                    'enabled': doc.get('enabled', False),
+                    'api_key': creds.get('api_key', ''),
+                    'api_secret': '***' if creds.get('api_secret') else '',
+                    'base_url': doc.get('base_url') or doc.get('connection_info', {}).get('base_url', ''),
+                    'name': doc.get('type', exchange_name),
+                    'testnet': doc.get('testnet', False),
+                    'trading_mode': doc.get('trading_mode', 'spot'),
+                    'leverage': doc.get('leverage', 1),
+                    'proxy': doc.get('proxy', ''),
+                    'symbols': doc.get('symbols') or ([doc.get('symbol')] if doc.get('symbol') else []),
+                    'account_id': doc.get('account_id'),
+                    'type': doc.get('type', exchange_name),
+                }
                 return jsonify(exchange_config)
-            return jsonify({'error': 'Exchange not found'}), 404
+            except Exception as ex:
+                logger.error(f"Error fetching exchange from MongoDB: {ex}", exc_info=True)
+                return jsonify({'error': 'Failed to fetch exchange from DB'}), 500
         
         @self.app.route('/api/exchanges/<exchange_name>', methods=['POST'])
         def update_exchange(exchange_name):
             """Update exchange configuration"""
-            if exchange_name not in self.config['exchanges']:
-                return jsonify({'error': 'Exchange not found'}), 404
-            
             data = request.get_json()
-            
-            # Update exchange configuration
-            exchange = self.config['exchanges'][exchange_name]
-            
-            # Only update if new values provided (don't overwrite with empty strings)
-            if 'enabled' in data:
-                exchange['enabled'] = bool(data['enabled'])
-            
-            if 'api_key' in data:
-                # Always update if provided (even if empty, to allow clearing)
-                if data['api_key']:
-                    # Trim whitespace to prevent signature errors
-                    old_key = exchange.get('api_key', '')
-                    exchange['api_key'] = data['api_key'].strip()
-                    # Log saved key (masked) for verification
-                    saved_key = exchange['api_key']
-                    masked_key = f"{saved_key[:6]}...{saved_key[-4:]}" if len(saved_key) > 10 else "***"
-                    logger.info(f"💾 Saved {exchange_name} API Key: {masked_key} (length: {len(saved_key)})")
-                    if old_key and old_key != saved_key:
-                        logger.info(f"   Previous key: {old_key[:6]}...{old_key[-4:] if len(old_key) > 10 else '***'}")
-                else:
-                    # Allow clearing the key
-                    exchange['api_key'] = ''
-                    logger.info(f"💾 Cleared {exchange_name} API Key")
-            
-            if 'api_secret' in data:
-                # Only update if not masked and not empty
-                if data['api_secret'] and data['api_secret'] != '***':
-                    # Trim whitespace to prevent signature errors
-                    old_secret = exchange.get('api_secret', '')
-                    exchange['api_secret'] = data['api_secret'].strip()
-                    # Log saved secret (masked) for verification
-                    saved_secret = exchange['api_secret']
-                    masked_secret = f"{saved_secret[:6]}...{saved_secret[-4:]}" if len(saved_secret) > 10 else "***"
-                    logger.info(f"💾 Saved {exchange_name} API Secret: {masked_secret} (length: {len(saved_secret)})")
-                    if old_secret and old_secret != saved_secret:
-                        logger.info(f"   Previous secret: {old_secret[:6]}...{old_secret[-4:] if len(old_secret) > 10 else '***'}")
-                elif data['api_secret'] == '':
-                    # Allow clearing the secret
-                    exchange['api_secret'] = ''
-                    logger.info(f"💾 Cleared {exchange_name} API Secret")
-                # If '***', do nothing (keep existing secret)
-            
-            if 'base_url' in data:
-                exchange['base_url'] = data['base_url']
-            
-            if 'paper_trading' in data:
-                exchange['paper_trading'] = bool(data['paper_trading'])
-            
-            if 'sub_account_id' in data:
-                exchange['sub_account_id'] = data['sub_account_id']
-            
-            if 'use_sub_account' in data:
-                exchange['use_sub_account'] = bool(data['use_sub_account'])
-            
-            # Generic leverage setting (IBKR futures / Bybit futures, etc.)
-            if 'leverage' in data:
-                leverage = int(data['leverage']) if data['leverage'] else 1
-                # Ensure leverage is between 1 and 100
-                exchange['leverage'] = max(1, min(100, leverage))
-            
-            if 'account_id' in data:
-                exchange['account_id'] = data['account_id']
-            
-            if 'use_paper' in data:
-                exchange['use_paper'] = bool(data['use_paper'])
-            
-            # Bybit specific settings
-            if 'testnet' in data:
-                exchange['testnet'] = bool(data['testnet'])
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                update = {}
+                if 'enabled' in data:
+                    update['enabled'] = bool(data['enabled'])
+                creds = {}
+                if 'api_key' in data:
+                    creds['api_key'] = data['api_key'].strip() if data['api_key'] else ''
+                if 'api_secret' in data and data['api_secret'] != '***':
+                    creds['api_secret'] = data['api_secret'].strip()
+                if creds:
+                    try:
+                        from secrets_manager import encrypt_credentials_dict
+                        creds = encrypt_credentials_dict(creds)
+                    except Exception:
+                        pass
+                    update['credentials'] = creds
+                if 'base_url' in data:
+                    update['base_url'] = data['base_url']
+                if 'paper_trading' in data:
+                    update['use_paper'] = bool(data['paper_trading'])
+                if 'sub_account_id' in data:
+                    update['sub_account_id'] = data['sub_account_id']
+                if 'use_sub_account' in data:
+                    update['use_sub_account'] = bool(data['use_sub_account'])
+                if 'leverage' in data:
+                    try:
+                        update['leverage'] = int(data['leverage'])
+                    except Exception:
+                        pass
+                if 'account_id' in data:
+                    update['account_id'] = data['account_id']
+                if 'use_paper' in data:
+                    update['use_paper'] = bool(data['use_paper'])
+                if 'testnet' in data:
+                    update['testnet'] = bool(data['testnet'])
+                if 'trading_mode' in data:
+                    tm = data['trading_mode'] if data['trading_mode'] in ['spot', 'futures'] else 'spot'
+                    update['trading_mode'] = tm
+                if 'proxy' in data:
+                    update['proxy'] = data['proxy']
+                if 'symbols' in data and isinstance(data['symbols'], list):
+                    clean = [s.strip().upper() for s in data['symbols'] if isinstance(s, str) and s.strip()]
+                    update['symbols'] = clean
+                if update:
+                    db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
+                    return jsonify({'status': 'success', 'message': 'Exchange updated in DB'})
+                return jsonify({'error': 'No valid fields to update'}), 400
+            except Exception as ex:
+                logger.error(f"Error updating exchange in MongoDB: {ex}", exc_info=True)
+                return jsonify({'error': 'Failed to update exchange in DB'}), 500
 
-            # Trading mode (for exchanges that support spot/futures, e.g. Bybit)
-            if 'trading_mode' in data:
-                mode_val = str(data['trading_mode']).lower() if data['trading_mode'] is not None else 'spot'
-                if mode_val not in ['spot', 'futures']:
-                    mode_val = 'spot'
-                exchange['trading_mode'] = mode_val
+        @self.app.route('/api/exchanges/<exchange_name>', methods=['DELETE'])
+        def delete_exchange(exchange_name):
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                res = db.exchange_accounts.delete_one({'_id': exchange_name})
+                if res.deleted_count == 0:
+                    return jsonify({'error': 'Exchange account not found'}), 404
+                return jsonify({'status': 'success', 'message': 'Exchange deleted'}), 200
+            except Exception as ex:
+                logger.error(f"Error deleting exchange in MongoDB: {ex}", exc_info=True)
+                return jsonify({'error': 'Failed to delete exchange in DB'}), 500
 
-            # Bybit proxy (for geo-blocked regions)
-            if 'proxy' in data and exchange_name == 'bybit':
-                exchange['proxy'] = (data['proxy'] or '').strip()
+        @self.app.route('/api/exchanges/<exchange_name>/toggle', methods=['POST'])
+        def toggle_exchange(exchange_name):
+            """Enable/disable exchange"""
+            data = request.get_json() or {}
+            enabled = bool(data.get('enabled', False))
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                res = db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'enabled': enabled}})
+                if res.matched_count == 0:
+                    return jsonify({'error': 'Exchange account not found'}), 404
+                return jsonify({'status': 'success', 'message': f"Exchange {'enabled' if enabled else 'disabled'} successfully", 'enabled': enabled})
+            except Exception as ex:
+                logger.error(f"Error toggling exchange in MongoDB: {ex}", exc_info=True)
+                return jsonify({'error': 'Failed to update exchange in DB'}), 500
 
-            # Optional: update allowed symbols list if provided (array of strings)
-            if 'symbols' in data and isinstance(data['symbols'], list):
-                # Normalize symbols: strip whitespace, upper-case, remove empties and duplicates
-                normalized_symbols = []
+        @self.app.route('/api/exchanges/<exchange_name>/market-symbols', methods=['GET'])
+        def search_market_symbols(exchange_name):
+            """Search symbols from the exchange's market. Looks up exchange_accounts by _id."""
+            query = (request.args.get('q') or '').strip().upper()
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+                if not doc:
+                    return jsonify({'error': 'Exchange not found'}), 404
+                ex_type = doc.get('type', '')
+                exchange = {
+                    'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url', ''),
+                    'testnet': doc.get('testnet', False),
+                    'trading_mode': doc.get('trading_mode', 'spot'),
+                    'api_key': '', 'api_secret': '',
+                }
+                symbols = self._fetch_market_symbols(ex_type, exchange, query)
+                return jsonify({'symbols': symbols})
+            except Exception as e:
+                logger.warning(f"market-symbols lookup failed: {e}")
+                return jsonify({'error': 'Failed to fetch symbols'}), 500
+
+        @self.app.route('/api/exchanges/<exchange_name>/symbols', methods=['GET', 'POST'])
+        def manage_exchange_symbols(exchange_name):
+            """Get or update allowed symbols for a specific exchange.
+            GET: Returns { "symbols": [...] }
+            POST: Accepts { "symbols": [...] } and replaces the list.
+            """
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+                if not doc:
+                    return jsonify({'error': 'Exchange not found'}), 404
+                if request.method == 'GET':
+                    symbols = doc.get('symbols') or ([doc.get('symbol')] if doc.get('symbol') else [])
+                    return jsonify({
+                        'exchange': exchange_name,
+                        'name': doc.get('type', exchange_name),
+                        'symbols': [str(s) for s in symbols if s]
+                    })
+                data = request.get_json() or {}
+                raw = data.get('symbols', [])
+                if not isinstance(raw, list):
+                    return jsonify({'error': 'symbols must be a list of strings'}), 400
+                normalized = []
                 seen = set()
-                for sym in data['symbols']:
+                for sym in raw:
                     if not isinstance(sym, str):
                         continue
                     clean = sym.strip().upper()
                     if not clean or clean in seen:
                         continue
-                    normalized_symbols.append(clean)
+                    normalized.append(clean)
                     seen.add(clean)
-                exchange['symbols'] = normalized_symbols
-            
-            # Save configuration
-            if self._save_config():
-                return jsonify({'status': 'success', 'message': 'Exchange updated successfully'})
-            else:
-                return jsonify({'error': 'Failed to save configuration'}), 500
-        
-        @self.app.route('/api/exchanges/<exchange_name>/toggle', methods=['POST'])
-        def toggle_exchange(exchange_name):
-            """Enable/disable exchange"""
-            if exchange_name not in self.config['exchanges']:
-                return jsonify({'error': 'Exchange not found'}), 404
-            
-            data = request.get_json()
-            enabled = data.get('enabled', False)
-            
-            self.config['exchanges'][exchange_name]['enabled'] = enabled
-            
-            if self._save_config():
-                return jsonify({
-                    'status': 'success',
-                    'message': f"Exchange {'enabled' if enabled else 'disabled'} successfully",
-                    'enabled': enabled
-                })
-            else:
-                return jsonify({'error': 'Failed to save configuration'}), 500
-
-        @self.app.route('/api/exchanges/<exchange_name>/market-symbols', methods=['GET'])
-        def search_market_symbols(exchange_name):
-            """
-            Search symbols from the exchange's market (TradingView-style).
-            GET: ?q=btc returns matching symbols from exchange instruments.
-            """
-            if exchange_name not in self.config['exchanges']:
-                return jsonify({'error': 'Exchange not found'}), 404
-
-            exchange = self.config['exchanges'][exchange_name]
-            query = (request.args.get('q') or '').strip().upper()
-            symbols = self._fetch_market_symbols(exchange_name, exchange, query)
-            return jsonify({'symbols': symbols})
-
-        @self.app.route('/api/exchanges/<exchange_name>/symbols', methods=['GET', 'POST'])
-        def manage_exchange_symbols(exchange_name):
-            """
-            Get or update allowed symbols for a specific exchange.
-            
-            GET: Returns { "symbols": [...] }
-            POST: Accepts { "symbols": [...] } and replaces the list.
-            """
-            if exchange_name not in self.config['exchanges']:
-                return jsonify({'error': 'Exchange not found'}), 404
-
-            exchange = self.config['exchanges'][exchange_name]
-
-            if request.method == 'GET':
-                symbols = exchange.get('symbols', [])
-                # Ensure list of strings
-                safe_symbols = [str(s) for s in symbols]
-                return jsonify({
-                    'exchange': exchange_name,
-                    'name': exchange.get('name', exchange_name),
-                    'symbols': safe_symbols
-                })
-
-            # POST: update symbols list
-            data = request.get_json() or {}
-            symbols = data.get('symbols', [])
-
-            if not isinstance(symbols, list):
-                return jsonify({'error': 'symbols must be a list of strings'}), 400
-
-            normalized_symbols = []
-            seen = set()
-            for sym in symbols:
-                if not isinstance(sym, str):
-                    continue
-                clean = sym.strip().upper()
-                if not clean or clean in seen:
-                    continue
-                normalized_symbols.append(clean)
-                seen.add(clean)
-
-            exchange['symbols'] = normalized_symbols
-
-            if self._save_config():
-                logger.info(f"✅ Updated symbols for {exchange_name}: {normalized_symbols}")
-                return jsonify({
-                    'status': 'success',
-                    'message': f"Symbols updated for {exchange_name}",
-                    'symbols': normalized_symbols
-                })
-            else:
-                return jsonify({'error': 'Failed to save configuration'}), 500
+                db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'symbols': normalized}})
+                logger.info(f"✅ Updated symbols for {exchange_name} in Mongo: {normalized}")
+                return jsonify({'status': 'success', 'symbols': normalized})
+            except Exception as e:
+                logger.warning(f"symbols operation failed: {e}")
+                return jsonify({'error': 'Failed to manage symbols'}), 500
         
         @self.app.route('/api/trading-settings', methods=['GET'])
         def get_trading_settings():
@@ -537,350 +470,328 @@ class Dashboard:
         
         @self.app.route('/api/trading-settings', methods=['POST'])
         def update_trading_settings():
-            """Update trading settings"""
-            data = request.get_json()
-            allowed_keys = {'position_size_percent', 'position_size_fixed', 'use_percentage', 
-                          'warn_existing_positions', 'webhook_port', 'webhook_host'}
-            
+            """Update trading settings — writes to MongoDB central_risk_management."""
+            data = request.get_json() or {}
+            allowed_keys = {'position_size_percent', 'position_size_fixed', 'use_percentage',
+                            'warn_existing_positions', 'webhook_port', 'webhook_host'}
+            update = {}
             for key, value in data.items():
                 if key not in allowed_keys:
                     continue
                 if key == 'position_size_percent':
                     try:
-                        position_size = float(value) if value else 20.0
-                        self.config['trading_settings'][key] = max(5.0, min(100.0, position_size))
-                    except ValueError:
+                        update[key] = max(5.0, min(100.0, float(value) if value else 20.0))
+                    except (ValueError, TypeError):
                         pass
                 elif key == 'position_size_fixed':
                     try:
-                        self.config['trading_settings'][key] = float(value) if value else ''
-                    except ValueError:
+                        update[key] = float(value) if value else ''
+                    except (ValueError, TypeError):
                         pass
                 elif key == 'use_percentage':
-                    self.config['trading_settings'][key] = bool(value)
+                    update[key] = bool(value)
+                elif key == 'warn_existing_positions':
+                    update[key] = bool(value)
                 else:
-                    self.config['trading_settings'][key] = value
-            
-            if self._save_config():
+                    update[key] = value
+            if not update:
+                return jsonify({'error': 'No valid fields to update'}), 400
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                db.central_risk_management.update_one({'_id': 'default'}, {'$set': update}, upsert=True)
+                self.config['trading_settings'].update(update)
                 return jsonify({'status': 'success', 'message': 'Trading settings updated successfully'})
-            else:
-                return jsonify({'error': 'Failed to save configuration'}), 500
+            except Exception as e:
+                logger.error(f"Error saving trading settings to MongoDB: {e}", exc_info=True)
+                return jsonify({'error': 'Failed to save trading settings'}), 500
         
         @self.app.route('/api/risk-management', methods=['GET'])
         def get_risk_management():
-            """Get risk management settings"""
-            return jsonify(self.config['risk_management'])
+            """Get risk management settings from MongoDB."""
+            try:
+                from mongo_db import get_central_risk
+                return jsonify(get_central_risk())
+            except Exception as e:
+                logger.error(f"Error fetching central risk from MongoDB: {e}", exc_info=True)
+                return jsonify({'error': 'Failed to fetch risk management settings'}), 500
         
         @self.app.route('/api/risk-management', methods=['POST'])
         def update_risk_management():
-            """Update risk management settings"""
-            data = request.get_json()
-            
-            # Update risk management settings
-            for key, value in data.items():
-                if key in self.config['risk_management']:
-                    try:
-                        self.config['risk_management'][key] = float(value)
-                    except ValueError:
-                        pass
-            
-            if self._save_config():
-                return jsonify({'status': 'success', 'message': 'Risk management settings updated successfully'})
-            else:
-                return jsonify({'error': 'Failed to save configuration'}), 500
-        
+            """Update risk management settings in MongoDB central_risk_management."""
+            data = request.get_json() or {}
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                update = {}
+                allowed = {'stop_loss_percent', 'take_profit_percent', 'position_size_percent', 'use_percentage', 'warn_existing_positions', 'overrides'}
+                for key, value in data.items():
+                    if key not in allowed:
+                        continue
+                    if key in {'stop_loss_percent', 'take_profit_percent', 'position_size_percent'}:
+                        try:
+                            update[key] = float(value)
+                        except Exception:
+                            continue
+                    elif key in {'use_percentage', 'warn_existing_positions'}:
+                        update[key] = bool(value) if not isinstance(value, str) else str(value).lower() == 'true'
+                    else:
+                        update[key] = value
+                if update:
+                    db.central_risk_management.update_one({'_id': 'default'}, {'$set': update}, upsert=True)
+                    return jsonify({'status': 'success', 'message': 'Central risk management updated in DB'})
+                return jsonify({'error': 'No valid fields to update'}), 400
+            except Exception as e:
+                logger.error(f'Error updating central risk in MongoDB: {e}', exc_info=True)
+                return jsonify({'error': 'Failed to update central risk in DB'}), 500
+
+        @self.app.route('/api/accounts', methods=['GET', 'POST'])
+        def list_accounts():
+            """List logical accounts (GET) or create/update an account (POST)."""
+            from uuid import uuid4
+            try:
+                from mongo_db import list_accounts as _list_accounts, get_db
+                if request.method == 'GET':
+                    accounts = _list_accounts()
+                    for a in accounts:
+                        a.pop('metadata', None)
+                    return jsonify({'accounts': accounts})
+                data = request.get_json() or {}
+                account_id = data.get('_id') or f"account_{str(uuid4())[:8]}"
+                db = get_db()
+                existing = db.accounts.find_one({'_id': account_id})
+                if existing:
+                    update_fields = {}
+                    if 'name' in data and data['name']:
+                        update_fields['name'] = data['name']
+                    if 'enabled' in data:
+                        update_fields['enabled'] = bool(data['enabled'])
+                    if update_fields:
+                        db.accounts.update_one({'_id': account_id}, {'$set': update_fields})
+                    doc = {**existing, **update_fields, '_id': account_id}
+                    return jsonify({'status': 'success', 'account': doc}), 200
+                name = data.get('name') or f"Account {str(uuid4())[:8]}"
+                enabled = bool(data.get('enabled', True))
+                doc = {'_id': account_id, 'name': name, 'enabled': enabled}
+                db.accounts.insert_one(doc)
+                return jsonify({'status': 'success', 'account': doc}), 201
+            except Exception as e:
+                logger.error(f"Error listing/creating accounts from MongoDB: {e}")
+                return jsonify({'error': 'Failed to list/create accounts from DB'}), 500
+
+        @self.app.route('/api/accounts/<account_id>/exchanges', methods=['GET', 'POST'])
+        def get_account_exchanges(account_id):
+            """Return ExchangeAccounts for a logical account (GET) or create an ExchangeAccount (POST)."""
+            try:
+                from mongo_db import get_exchange_accounts_for_account, get_db
+                if request.method == 'GET':
+                    exs = get_exchange_accounts_for_account(account_id)
+                    for e in exs:
+                        if 'credentials' in e and isinstance(e['credentials'], dict):
+                            e['credentials'] = {'api_key': '***'} if e['credentials'].get('api_key') else {}
+                    return jsonify({'exchanges': exs})
+                data = request.get_json() or {}
+                from uuid import uuid4
+                ex_type = data.get('type', 'mexc')
+                ex_id = data.get('_id') or f"{ex_type}_{str(uuid4())[:8]}"
+                credentials = data.get('credentials') or {}
+                if not credentials:
+                    flat_key = (data.get('api_key') or '').strip()
+                    flat_secret = (data.get('api_secret') or '').strip()
+                    if flat_key or flat_secret:
+                        credentials = {}
+                        if flat_key:
+                            credentials['api_key'] = flat_key
+                        if flat_secret and flat_secret != '***':
+                            credentials['api_secret'] = flat_secret
+                try:
+                    from secrets_manager import encrypt_credentials_dict
+                    credentials = encrypt_credentials_dict(credentials)
+                except Exception:
+                    pass
+                doc = {
+                    '_id': ex_id,
+                    'account_id': account_id,
+                    'type': ex_type,
+                    'enabled': bool(data.get('enabled', True)),
+                    'credentials': credentials,
+                    'symbols': data.get('symbols') or ([data['symbol']] if data.get('symbol') else []),
+                    'leverage': data.get('leverage'),
+                    'trading_mode': data.get('trading_mode'),
+                    'testnet': bool(data.get('testnet', False)),
+                    'base_url': data.get('base_url') or '',
+                    'proxy': data.get('proxy', ''),
+                    'use_paper': bool(data.get('use_paper', False)),
+                }
+                db = get_db()
+                db.exchange_accounts.update_one({'_id': ex_id}, {'$set': doc}, upsert=True)
+                resp_doc = dict(doc)
+                resp_doc['credentials'] = {'api_key': '***'} if credentials.get('api_key') else {}
+                return jsonify({'status': 'success', 'exchange': resp_doc}), 201
+            except Exception as e:
+                logger.error(f"Error fetching/creating exchange accounts: {e}")
+                return jsonify({'error': 'Failed to fetch/create exchange accounts'}), 500
+
+        @self.app.route('/api/accounts/<account_id>', methods=['DELETE'])
+        def delete_account(account_id):
+            """Delete a logical account and all its exchange accounts from MongoDB."""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                db.exchange_accounts.delete_many({'account_id': account_id})
+                res = db.accounts.delete_one({'_id': account_id})
+                if res.deleted_count == 0:
+                    return jsonify({'error': 'Account not found'}), 404
+                return jsonify({'status': 'success', 'message': 'Account and its exchange accounts deleted'})
+            except Exception as e:
+                logger.error(f"Error deleting account: {e}")
+                return jsonify({'error': 'Failed to delete account'}), 500
+
+        @self.app.route('/api/trades', methods=['GET'])
+        def query_trades():
+            """Query trades. Supports account_id, exchange_account_id, symbol, limit, page"""
+            params = request.args
+            account_id = params.get('account_id')
+            exchange_account_id = params.get('exchange_account_id')
+            symbol = params.get('symbol')
+            try:
+                limit = int(params.get('limit', 100))
+                page = int(params.get('page', 0))
+            except Exception:
+                limit = 100
+                page = 0
+            skip = page * limit
+            try:
+                from mongo_db import get_trades
+                filters = {}
+                if account_id:
+                    filters['account_id'] = account_id
+                if exchange_account_id:
+                    filters['exchange_account_id'] = exchange_account_id
+                if symbol:
+                    filters['symbol'] = symbol
+                trades = get_trades(filters, limit=limit, skip=skip)
+                return jsonify({'trades': trades, 'page': page, 'limit': limit})
+            except Exception as e:
+                logger.error(f"Error querying trades: {e}")
+                return jsonify({'error': 'Failed to query trades'}), 500
+
         @self.app.route('/api/exchanges/status', methods=['GET'])
         def get_exchanges_status():
-            """Get connection status and balances for all exchanges"""
-            status = {}
-            
-            # Check if demo mode is active
+            """Get connection status and balances for all exchange accounts."""
             if self.demo_mode.is_active():
-                # Return demo data for MEXC
                 demo_status = self.demo_mode.get_demo_connection_status()
                 demo_balances = self.demo_mode.get_demo_balances()
-                
-                status['mexc'] = {
+                return jsonify({'mexc': {
                     'name': 'MEXC',
                     'enabled': True,
                     'connected': demo_status['connected'],
                     'can_trade': demo_status['can_trade'],
                     'balances': demo_balances,
                     'demo_mode': True
-                }
-                return jsonify(status)
-            
-            # Check all configured exchanges
-            for exchange_name, exchange_config in self.config['exchanges'].items():
-                exchange_status = {
-                    'name': exchange_config.get('name', exchange_name),
-                    'enabled': exchange_config.get('enabled', False),
-                    'connected': False,
-                    'can_trade': False,
-                    'balances': {}
-                }
-                
-                # Check if we can validate: API keys, or IBKR (Gateway session — keys optional)
-                can_validate = (exchange_config.get('api_key') and exchange_config.get('api_secret')) or exchange_name == 'ibkr'
-                if can_validate:
-                    try:
-                        if exchange_name == 'mexc':
-                            from mexc_client import MEXCClient
-                            try:
-                                # Trim whitespace to prevent signature errors
-                                api_key = exchange_config['api_key'].strip()
-                                api_secret = exchange_config['api_secret'].strip()
-                                client = MEXCClient(
-                                    api_key=api_key,
-                                    api_secret=api_secret,
-                                    base_url=exchange_config.get('base_url', 'https://api.mexc.com'),
-                                    sub_account_id=exchange_config.get('sub_account_id', ''),
-                                    use_sub_account=exchange_config.get('use_sub_account', False)
-                                )
-                                validation = client.validate_connection()
-                                exchange_status['connected'] = validation['connected']
-                                exchange_status['can_trade'] = validation['can_trade']
-                                if validation['connected']:
-                                    # Always fetch and return balances (even if empty/zero)
-                                    balances = client.get_main_balances()
-                                    exchange_status['balances'] = balances  # Will be {} if all zero
-                                    logger.info(f"✅ {exchange_name} connected - Balances: {len(balances)} assets")
-                                else:
-                                    # Not connected, set balances to null (not empty object)
-                                    exchange_status['balances'] = None
-                                # Don't set error message - UI will just show "Not connected"
-                            except Exception as e:
-                                logger.error(f"Error validating MEXC connection: {e}", exc_info=True)
-                                exchange_status['connected'] = False
-                                # Don't set error message - UI will just show "Not connected"
-                        elif exchange_name == 'alpaca':
-                            from alpaca_client import AlpacaClient
-                            try:
-                                # Trim whitespace to prevent errors
-                                api_key = exchange_config['api_key'].strip()
-                                api_secret = exchange_config['api_secret'].strip()
-                                client = AlpacaClient(
-                                    api_key=api_key,
-                                    api_secret=api_secret,
-                                    base_url=exchange_config.get('base_url', 'https://paper-api.alpaca.markets')
-                                )
-                                validation = client.validate_connection()
-                                exchange_status['connected'] = validation['connected']
-                                exchange_status['can_trade'] = validation['can_trade']
-                                if validation['connected']:
-                                    # Always fetch and return balances (even if empty/zero)
-                                    balances = client.get_main_balances()
-                                    exchange_status['balances'] = balances  # Will be {} if all zero
-                                    logger.info(f"✅ {exchange_name} connected - Balances: {len(balances)} assets")
-                                else:
-                                    # Not connected, set balances to null (not empty object)
-                                    exchange_status['balances'] = None
-                                # Don't set error message - UI will just show "Not connected"
-                            except Exception as e:
-                                logger.error(f"Error validating Alpaca connection: {e}", exc_info=True)
-                                exchange_status['connected'] = False
-                                # Don't set error message - UI will just show "Not connected"
-                        elif exchange_name == 'ibkr':
-                            from ibkr_client import IBKRClient
-                            try:
-                                api_key = (exchange_config.get('api_key') or '').strip()
-                                api_secret = (exchange_config.get('api_secret') or '').strip()
-                                ibkr_base = (exchange_config.get('base_url') or 'https://localhost:5000').rstrip('/')
-                                client = IBKRClient(
-                                    api_key=api_key,
-                                    api_secret=api_secret,
-                                    base_url=ibkr_base,
-                                    account_id=exchange_config.get('account_id', ''),
-                                    use_paper=exchange_config.get('use_paper', False),
-                                    leverage=exchange_config.get('leverage', 1)
-                                )
-                                validation = client.validate_connection()
-                                exchange_status['connected'] = validation['connected']
-                                exchange_status['can_trade'] = validation['can_trade']
-                                if validation['connected']:
-                                    # Always fetch and return balances (even if empty/zero)
-                                    balances = client.get_main_balances()
-                                    exchange_status['balances'] = balances  # Will be {} if all zero
-                                    logger.info(f"✅ {exchange_name} connected - Balances: {len(balances)} assets")
-                                else:
-                                    # Not connected, set balances to null (not empty object)
-                                    exchange_status['balances'] = None
-                                # Don't set error message - UI will just show "Not connected"
-                            except Exception as e:
-                                logger.error(f"Error validating IBKR connection: {e}", exc_info=True)
-                                exchange_status['connected'] = False
-                                # Don't set error message - UI will just show "Not connected"
-                        elif exchange_name == 'bybit':
-                            from bybit_client import BybitClient
-                            try:
-                                # Trim whitespace to prevent errors
-                                api_key = exchange_config['api_key'].strip()
-                                api_secret = exchange_config['api_secret'].strip()
-                                proxy = (exchange_config.get('proxy') or '').strip() or None
-                                client = BybitClient(
-                                    api_key=api_key,
-                                    api_secret=api_secret,
-                                    base_url=exchange_config.get('base_url', 'https://api.bybit.com'),
-                                    testnet=exchange_config.get('testnet', False),
-                                    trading_mode=exchange_config.get('trading_mode', 'spot'),
-                                    leverage=exchange_config.get('leverage', 1),
-                                    proxy=proxy
-                                )
-                                validation = client.validate_connection()
-                                exchange_status['connected'] = validation['connected']
-                                exchange_status['can_trade'] = validation['can_trade']
-                                if validation['connected']:
-                                    # Always fetch and return balances (even if empty/zero)
-                                    balances = client.get_main_balances()
-                                    exchange_status['balances'] = balances  # Will be {} if all zero
-                                    logger.info(f"✅ {exchange_name} connected - Balances: {len(balances)} assets")
-                                else:
-                                    # Not connected, set balances to null (not empty object)
-                                    exchange_status['balances'] = None
-                                # Don't set error message - UI will just show "Not connected"
-                            except Exception as e:
-                                logger.error(f"Error validating Bybit connection: {e}", exc_info=True)
-                                exchange_status['connected'] = False
-                                # Don't set error message - UI will just show "Not connected"
-                        else:
-                            # Don't set error message - UI will just show "Not connected"
-                            pass
-                    except Exception as e:
-                        logger.error(f"Error checking {exchange_name}: {e}")
-                        # Don't set error message - UI will just show "Not connected"
-                
-                status[exchange_name] = exchange_status
-            
-            return jsonify(status)
+                }})
+            try:
+                from mongo_db import get_enabled_exchange_accounts
+                mongo_accounts = get_enabled_exchange_accounts()
+                return jsonify(self._check_mongo_exchanges_status(mongo_accounts))
+            except Exception as e:
+                logger.error(f"Exchange status check failed: {e}", exc_info=True)
+                return jsonify({'error': 'Failed to check exchange status'}), 500
         
         @self.app.route('/api/test-connection/<exchange_name>', methods=['POST'])
         def test_connection(exchange_name):
-            """Test exchange API connection. Accepts optional JSON body with api_key, api_secret, etc. for testing before save."""
-            exchange_name = exchange_name.lower()
-            if exchange_name not in self.config['exchanges']:
-                return jsonify({'error': 'Exchange not found'}), 404
-            
-            exchange = self.config['exchanges'][exchange_name]
+            """Test exchange API connection. Looks up exchange_accounts by _id to get saved credentials."""
             data = request.get_json(silent=True) or {}
-            
-            # Use request body credentials if provided, else saved config
+            exchange_type = exchange_name.lower()
+            exchange = {}
+
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+                if doc:
+                    exchange_type = (doc.get('type') or exchange_name).lower()
+                    creds = doc.get('credentials') or {}
+                    try:
+                        from secrets_manager import decrypt_credentials_dict
+                        creds = decrypt_credentials_dict(creds)
+                    except Exception:
+                        pass
+                    exchange = {
+                        'api_key': creds.get('api_key', ''),
+                        'api_secret': creds.get('api_secret', ''),
+                        'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url', ''),
+                        'testnet': doc.get('testnet', False),
+                        'trading_mode': doc.get('trading_mode', 'spot'),
+                        'leverage': doc.get('leverage', 1),
+                        'account_id': doc.get('account_id', ''),
+                        'use_paper': doc.get('use_paper', False),
+                        'proxy': doc.get('proxy', ''),
+                    }
+            except Exception as e:
+                logger.warning(f"test-connection Mongo lookup failed: {e}")
+
+            if not exchange:
+                return jsonify({'error': 'Exchange account not found'}), 404
+
+            # Merge request-provided credentials/settings over saved values
             api_key = (data.get('api_key') or exchange.get('api_key') or '').strip()
             api_secret = (data.get('api_secret') or exchange.get('api_secret') or '').strip()
             if data.get('api_secret') == '***':
-                api_secret = (exchange.get('api_secret') or '').strip()  # Keep existing when masked
-            base_url = data.get('base_url') or exchange.get('base_url', 'https://api.bybit.com')
-            
-            # IBKR uses IB Gateway/TWS session auth — no API keys required
-            if exchange_name != 'ibkr':
+                api_secret = (exchange.get('api_secret') or '').strip()
+            base_url = data.get('base_url') or exchange.get('base_url', '')
+
+            if exchange_type != 'ibkr':
                 if not api_key or not api_secret or api_secret == '***':
-                    return jsonify({'error': 'API key and secret required. Enter both in the form and save, or re-enter the secret if it shows ***.'}), 400
-            
+                    return jsonify({'error': 'API key and secret required. Enter both and save, or re-enter the secret if it shows ***.'}), 400
+
             try:
-                if exchange_name == 'mexc':
+                if exchange_type == 'mexc':
                     from mexc_client import MEXCClient
-                    logger.info(f"🧪 Testing {exchange_name} connection (API Key: {api_key[:6]}...{api_key[-4:]})")
-                    client = MEXCClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=base_url or exchange.get('base_url', 'https://api.mexc.com')
-                    )
+                    client = MEXCClient(api_key=api_key, api_secret=api_secret,
+                                        base_url=base_url or 'https://api.mexc.com')
                     validation = client.validate_connection()
-                    if validation['connected']:
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Connection successful',
-                            'can_trade': validation['can_trade'],
-                            'balances': client.get_main_balances()
-                        })
-                    else:
-                        return jsonify({
-                            'status': 'error',
-                            'error': validation.get('error', 'Connection failed')
-                        }), 500
-                elif exchange_name == 'alpaca':
+                elif exchange_type == 'alpaca':
                     from alpaca_client import AlpacaClient
-                    logger.info(f"🧪 Testing {exchange_name} connection (API Key: {api_key[:6]}...{api_key[-4:]})")
-                    client = AlpacaClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=base_url or exchange.get('base_url', 'https://paper-api.alpaca.markets')
-                    )
+                    client = AlpacaClient(api_key=api_key, api_secret=api_secret,
+                                          base_url=base_url or 'https://paper-api.alpaca.markets')
                     validation = client.validate_connection()
-                    if validation['connected']:
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Connection successful',
-                            'can_trade': validation['can_trade'],
-                            'balances': client.get_main_balances()
-                        })
-                    else:
-                        return jsonify({
-                            'status': 'error',
-                            'error': validation.get('error', 'Connection failed')
-                        }), 500
-                elif exchange_name == 'bybit':
+                elif exchange_type == 'bybit':
                     from bybit_client import BybitClient
                     testnet = data.get('testnet') if 'testnet' in data else exchange.get('testnet', False)
                     trading_mode = data.get('trading_mode') or exchange.get('trading_mode', 'spot')
                     leverage = int(data.get('leverage') or exchange.get('leverage', 1))
                     proxy = (data.get('proxy') or exchange.get('proxy') or '').strip() or None
-                    logger.info(f"🧪 Testing Bybit: base_url={base_url or exchange.get('base_url')}, testnet={testnet}, mode={trading_mode}, proxy={'yes' if proxy else 'no'}")
-                    client = BybitClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=(base_url or exchange.get('base_url', 'https://api.bybit.com')).rstrip('/'),
-                        testnet=testnet,
-                        trading_mode=trading_mode,
-                        leverage=leverage,
-                        proxy=proxy
-                    )
+                    client = BybitClient(api_key=api_key, api_secret=api_secret,
+                                         base_url=(base_url or 'https://api.bybit.com').rstrip('/'),
+                                         testnet=testnet, trading_mode=trading_mode,
+                                         leverage=leverage, proxy=proxy)
                     validation = client.validate_connection()
-                    if validation['connected']:
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Connection successful',
-                            'can_trade': validation['can_trade'],
-                            'balances': client.get_main_balances()
-                        })
-                    else:
-                        return jsonify({
-                            'status': 'error',
-                            'error': validation.get('error', 'Connection failed')
-                        }), 500
-                elif exchange_name == 'ibkr':
+                elif exchange_type == 'ibkr':
                     from ibkr_client import IBKRClient
-                    ibkr_base = (base_url or exchange.get('base_url') or 'https://localhost:5000').rstrip('/')
-                    logger.info(f"🧪 Testing IBKR / Gateway at {ibkr_base} (session auth — open Gateway login in browser first)")
-                    client = IBKRClient(
-                        api_key=api_key or '',
-                        api_secret=api_secret or '',
-                        base_url=ibkr_base,
-                        account_id=data.get('account_id') or exchange.get('account_id', ''),
-                        use_paper=data.get('use_paper') if 'use_paper' in data else exchange.get('use_paper', False),
-                        leverage=int(data.get('leverage') or exchange.get('leverage', 1))
-                    )
+                    ibkr_base = (base_url or 'https://localhost:5000').rstrip('/')
+                    client = IBKRClient(api_key=api_key or '', api_secret=api_secret or '',
+                                        base_url=ibkr_base,
+                                        account_id=data.get('account_id') or exchange.get('account_id', ''),
+                                        use_paper=data.get('use_paper') if 'use_paper' in data else exchange.get('use_paper', False),
+                                        leverage=int(data.get('leverage') or exchange.get('leverage', 1)))
                     validation = client.validate_connection()
-                    if validation['connected']:
-                        return jsonify({
-                            'status': 'success',
-                            'message': 'Connection successful',
-                            'can_trade': validation['can_trade'],
-                            'balances': client.get_main_balances()
-                        })
-                    else:
-                        return jsonify({
-                            'status': 'error',
-                            'error': validation.get('error', 'Connection failed')
-                        }), 500
                 else:
                     return jsonify({'error': 'Exchange not supported'}), 400
-                    
+
+                if validation['connected']:
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'Connection successful',
+                        'can_trade': validation['can_trade'],
+                        'balances': client.get_main_balances()
+                    })
+                else:
+                    return jsonify({'status': 'error', 'error': validation.get('error', 'Connection failed')}), 500
+
             except Exception as e:
                 logger.error(f"Connection test failed: {e}")
-                return jsonify({
-                    'error': 'Connection failed',
-                    'message': str(e)
-                }), 500
+                return jsonify({'error': 'Connection failed', 'message': str(e)}), 500
         
         @self.app.route('/api/status', methods=['GET'])
         def get_status():
@@ -894,18 +805,20 @@ class Dashboard:
                     'demo_mode': True,
                     'demo_stats': demo_stats
                 })
-            
-            enabled_exchanges = [
-                name for name, config in self.config['exchanges'].items()
-                if config.get('enabled', False)
-            ]
-            
-            return jsonify({
-                'exchanges_enabled': enabled_exchanges,
-                'total_exchanges': len(self.config['exchanges']),
-                'position_size': self.config['trading_settings'].get('position_size_percent', 0),
-                'demo_mode': False
-            })
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                all_accs = list(db.exchange_accounts.find({}, {'_id': 1, 'type': 1, 'enabled': 1}))
+                enabled = [a['_id'] for a in all_accs if a.get('enabled', True)]
+                return jsonify({
+                    'exchanges_enabled': enabled,
+                    'total_exchanges': len(all_accs),
+                    'position_size': self.config['trading_settings'].get('position_size_percent', 0),
+                    'demo_mode': False,
+                })
+            except Exception as e:
+                logger.warning(f"Status Mongo lookup failed: {e}")
+                return jsonify({'error': 'Failed to get status'}), 500
         
         @self.app.route('/api/demo/trades', methods=['GET'])
         def get_demo_trades():

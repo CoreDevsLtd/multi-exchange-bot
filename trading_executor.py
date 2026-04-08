@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 class TradingExecutor:
     """Handles trading execution with risk management"""
     
-    def __init__(self, exchange_client: Union[object], config: Dict, exchange_name: str = 'mexc'):
+    def __init__(self, exchange_client: Union[object], config: Dict, exchange_name: str = 'mexc', exchange_account_id: str = None, account_id: str = None):
         """
         Initialize Trading Executor
         
@@ -42,7 +42,8 @@ class TradingExecutor:
             self.use_percentage = str(use_percentage_val).lower() == 'true'
         
         # Initialize position and TP/SL managers
-        self.position_manager = PositionManager(exchange_client, exchange_name)
+        # Pass exchange account identifiers (if provided) to the position manager for persistence
+        self.position_manager = PositionManager(exchange_client, exchange_name, exchange_account_id=exchange_account_id, account_id=account_id)
         stop_loss_percent = float(config.get('STOP_LOSS_PERCENT', 5.0))
         self.tp_sl_manager = TPSLManager(exchange_client, self.position_manager, stop_loss_percent, exchange_name)
         

@@ -17,137 +17,79 @@ logger = logging.getLogger(__name__)
 class WebhookHandler:
     """Handles TradingView webhook requests"""
     
-    def __init__(self, trading_executor: Optional[TradingExecutor] = None, signal_monitor: Optional[SignalMonitor] = None):
+    def __init__(self, signal_monitor: Optional[SignalMonitor] = None):
         """
         Initialize Webhook Handler
-        
+
         Args:
-            trading_executor: TradingExecutor instance (optional for demo mode)
             signal_monitor: Optional SignalMonitor instance
         """
-        self.executor = trading_executor
         self.signal_monitor = signal_monitor or SignalMonitor()
         self.app = Flask(__name__)
         self._setup_routes()
     
-    def _get_dashboard_config(self):
-        """Load dashboard config from dashboard instance or file."""
-        import os
-        if hasattr(self, 'dashboard') and self.dashboard:
-            return self.dashboard.config
-        for path in ['dashboard_config.json', os.path.join(os.path.dirname(__file__), 'dashboard_config.json'),
-                     os.path.join(os.getcwd(), 'dashboard_config.json')]:
-            if os.path.exists(path):
-                with open(path, 'r') as f:
-                    return json.load(f)
-        return None
-    
     def _get_or_create_executors(self):
-        """
-        Get or create executors for all enabled exchanges.
-        
+        """Create executors for all enabled exchange accounts from MongoDB.
+
         Returns:
-            Dict of exchange_name -> TradingExecutor
+            Dict of exchange_account_id -> TradingExecutor
         """
-        dashboard_config = self._get_dashboard_config()
-        if not dashboard_config:
-            logger.warning("Dashboard config not found")
+        executor_config = {}
+        self._executor_meta = {}
+        try:
+            from mongo_db import get_enabled_exchange_accounts, get_central_risk
+            risk_mgmt = get_central_risk()
+            executor_config['STOP_LOSS_PERCENT'] = float(risk_mgmt.get('stop_loss_percent', 5.0))
+            executor_config['POSITION_SIZE_PERCENT'] = float(risk_mgmt.get('position_size_percent', 20.0))
+            executor_config['POSITION_SIZE_FIXED'] = risk_mgmt.get('position_size_fixed') or None
+            use_pct = risk_mgmt.get('use_percentage', True)
+            executor_config['USE_PERCENTAGE'] = bool(use_pct) if not isinstance(use_pct, str) else str(use_pct).lower() == 'true'
+            executor_config['warn_existing_positions'] = bool(risk_mgmt.get('warn_existing_positions', True))
+
+            accounts = get_enabled_exchange_accounts()
+            executors = {}
+            for ex_acc in accounts:
+                ex_type = ex_acc.get('type')
+                ex_id = ex_acc.get('_id')
+                creds = ex_acc.get('credentials', {}) or {}
+                api_key = creds.get('api_key') or ex_acc.get('api_key', '')
+                api_secret = creds.get('api_secret') or ex_acc.get('api_secret', '')
+                base_url = ex_acc.get('base_url', '') or ex_acc.get('connection_info', {}).get('base_url', '')
+                try:
+                    if ex_type == 'mexc':
+                        from mexc_client import MEXCClient
+                        client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
+                                            sub_account_id=ex_acc.get('sub_account_id', ''),
+                                            use_sub_account=ex_acc.get('use_sub_account', False))
+                    elif ex_type == 'alpaca':
+                        from alpaca_client import AlpacaClient
+                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url)
+                    elif ex_type == 'ibkr':
+                        from ibkr_client import IBKRClient
+                        client = IBKRClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
+                                            account_id=ex_acc.get('account_id', ''), use_paper=ex_acc.get('use_paper', False),
+                                            leverage=ex_acc.get('leverage', 1))
+                    elif ex_type == 'bybit':
+                        from bybit_client import BybitClient
+                        proxy = (ex_acc.get('proxy') or '').strip() or None
+                        client = BybitClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
+                                             testnet=ex_acc.get('testnet', False),
+                                             trading_mode=ex_acc.get('trading_mode', 'spot'),
+                                             leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
+                    else:
+                        logger.warning(f"Unknown exchange type: {ex_type} ({ex_id}) — skipping")
+                        continue
+
+                    executors[ex_id] = TradingExecutor(client, executor_config, ex_type, exchange_account_id=ex_id, account_id=ex_acc.get('account_id'))
+                    self._executor_meta[ex_id] = ex_acc
+                except Exception as e:
+                    logger.error(f"Failed to create client for exchange account {ex_id}: {e}", exc_info=True)
+
+            logger.info(f"✅ Created {len(executors)} executor(s) from MongoDB")
+            return executors
+        except Exception as e:
+            logger.error(f"Failed to create executors from MongoDB: {e}", exc_info=True)
             return {}
-        
-        trading_settings = dashboard_config.get('trading_settings', {})
-        risk_mgmt = dashboard_config.get('risk_management', {})
-        executor_config = trading_settings.copy()
-        executor_config['STOP_LOSS_PERCENT'] = float(risk_mgmt.get('stop_loss_percent', 5.0))
-        executor_config['POSITION_SIZE_PERCENT'] = float(trading_settings.get('position_size_percent', 20.0))
-        executor_config['POSITION_SIZE_FIXED'] = trading_settings.get('position_size_fixed') or None
-        use_pct = trading_settings.get('use_percentage', True)
-        executor_config['USE_PERCENTAGE'] = bool(use_pct) if not isinstance(use_pct, str) else str(use_pct).lower() == 'true'
-        executor_config['warn_existing_positions'] = trading_settings.get('warn_existing_positions', True)
-        
-        exchange_clients = {}
-        for exchange_name, exchange_config in dashboard_config.get('exchanges', {}).items():
-            if not exchange_config.get('enabled', False):
-                continue
-            api_key = exchange_config.get('api_key', '').strip()
-            api_secret = exchange_config.get('api_secret', '').strip()
-            base_url = exchange_config.get('base_url', '').strip()
-            if exchange_name != 'ibkr' and (not api_key or not api_secret):
-                logger.warning(f"{exchange_name} is enabled but missing API credentials")
-                continue
-            if exchange_name == 'ibkr' and not base_url:
-                base_url = 'https://localhost:5000'
-            try:
-                if exchange_name == 'mexc':
-                    from mexc_client import MEXCClient
-                    client = MEXCClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=base_url,
-                        sub_account_id=exchange_config.get('sub_account_id', ''),
-                        use_sub_account=exchange_config.get('use_sub_account', False)
-                    )
-                    validation = client.validate_connection()
-                    if validation['connected']:
-                        exchange_clients[exchange_name] = client
-                        logger.info(f"✅ Created MEXC client")
-                    else:
-                        logger.warning(f"❌ MEXC connection failed: {validation.get('error', 'Unknown error')}")
-                elif exchange_name == 'alpaca':
-                    from alpaca_client import AlpacaClient
-                    client = AlpacaClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=base_url
-                    )
-                    validation = client.validate_connection()
-                    if validation['connected']:
-                        exchange_clients[exchange_name] = client
-                        logger.info(f"✅ Created Alpaca client")
-                    else:
-                        logger.warning(f"❌ Alpaca connection failed: {validation.get('error', 'Unknown error')}")
-                elif exchange_name == 'ibkr':
-                    from ibkr_client import IBKRClient
-                    ibkr_url = base_url or 'https://localhost:5000'
-                    client = IBKRClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=ibkr_url.rstrip('/'),
-                        account_id=exchange_config.get('account_id', ''),
-                        use_paper=exchange_config.get('use_paper', False),
-                        leverage=exchange_config.get('leverage', 1)
-                    )
-                    validation = client.validate_connection()
-                    if validation['connected']:
-                        exchange_clients[exchange_name] = client
-                        logger.info(f"✅ Created IBKR client")
-                    else:
-                        logger.warning(f"❌ IBKR connection failed: {validation.get('error', 'Unknown error')}")
-                elif exchange_name == 'bybit':
-                    from bybit_client import BybitClient
-                    proxy = (exchange_config.get('proxy') or '').strip() or None
-                    client = BybitClient(
-                        api_key=api_key,
-                        api_secret=api_secret,
-                        base_url=base_url,
-                        testnet=exchange_config.get('testnet', False),
-                        trading_mode=exchange_config.get('trading_mode', 'spot'),
-                        leverage=int(exchange_config.get('leverage', 1)),
-                        proxy=proxy
-                    )
-                    validation = client.validate_connection()
-                    if validation['connected']:
-                        exchange_clients[exchange_name] = client
-                        logger.info(f"✅ Created Bybit client")
-                    else:
-                        logger.warning(f"❌ Bybit connection failed: {validation.get('error', 'Unknown error')}")
-            except Exception as e:
-                logger.error(f"Failed to create {exchange_name} client: {e}", exc_info=True)
-        
-        executors = {}
-        for ex_name, client in exchange_clients.items():
-            executors[ex_name] = TradingExecutor(client, executor_config, ex_name)
-        logger.info(f"✅ Created {len(executors)} executor(s) for {list(executors.keys())}")
-        return executors
     
     def _register_routes_to_app(self, target_app):
         """Register webhook routes to an existing Flask app (for integration)"""
@@ -201,24 +143,20 @@ class WebhookHandler:
                 # Base form for matching: BTCUSDT.P and BTCUSDT both map to BTCUSDT
                 symbol_base = symbol_norm[:-2] if symbol_norm.endswith('.P') else symbol_norm
                 logger.info(f"Signal routing: raw_symbol={symbol}, normalized={symbol_norm}, base={symbol_base}")
-                dashboard_config = self._get_dashboard_config() or {}
-                exchanges_cfg = dashboard_config.get('exchanges', {})
-                
-                # Find exchanges that have this symbol configured (must have symbol in list)
+                # Find executors that should receive this symbol (keyed by exchange_account_id)
                 executors_to_use = []
-                for ex_name, executor in executors.items():
-                    allowed = exchanges_cfg.get(ex_name, {}).get('symbols', []) or []
-                    normalized = {str(s).strip().upper().replace(' ', '') for s in allowed if s}
+                for ex_acc_id, executor in executors.items():
+                    meta = self._executor_meta.get(ex_acc_id, {})
+                    symbols = meta.get('symbols') or ([meta.get('symbol')] if meta.get('symbol') else [])
+                    normalized = {str(s).strip().upper().replace(' ', '') for s in symbols if s}
                     allowed_bases = {s[:-2] if s.endswith('.P') else s for s in normalized}
                     if not allowed_bases:
-                        logger.info(f"Symbol routing: {ex_name} has no configured symbols; this exchange will not receive trades")
+                        logger.info(f"Symbol routing: {ex_acc_id} has no configured symbols — skipping")
                     else:
-                        logger.info(
-                            f"Symbol routing: {ex_name} allowed={sorted(allowed_bases)} incoming={symbol_base} match={symbol_base in allowed_bases if symbol_base else False}"
-                        )
+                        logger.info(f"Symbol routing: {ex_acc_id} allowed={sorted(allowed_bases)} incoming={symbol_base} match={symbol_base in allowed_bases if symbol_base else False}")
                     if allowed_bases and symbol_base and symbol_base in allowed_bases:
-                        executors_to_use.append((ex_name, executor))
-                
+                        executors_to_use.append((ex_acc_id, executor))
+
                 if not executors_to_use:
                     msg = f"Symbol {symbol} not configured for any enabled exchange. Add it in Exchanges → Manage Symbols."
                     logger.info(f"ℹ️  {msg}")
