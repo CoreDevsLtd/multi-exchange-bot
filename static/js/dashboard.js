@@ -139,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // High-level page switching
 function showPage(pageId) {
     currentPage = pageId;
-    const pages = ['overview', 'exchanges', 'symbolsRouting', 'tradingSettings', 'risk', 'activity'];
+    const pages = ['overview', 'exchanges', 'accounts', 'symbolsRouting', 'tradingSettings', 'risk', 'activity'];
     pages.forEach(function(p) {
         const el = document.getElementById('page-' + p);
         if (el) {
@@ -159,10 +159,94 @@ function showPage(pageId) {
     // Refresh page-specific data when navigating
     if (pageId === 'symbolsRouting') {
         refreshSymbolsRouting();
+    } else if (pageId === 'accounts') {
+        renderAccounts();
     } else if (pageId === 'activity') {
         updateRecentSignals();
         if (typeof loadDemoData === 'function') loadDemoData();
     }
+}
+
+// Render accounts list (Mongo-backed)
+async function renderAccounts() {
+    try {
+        const resp = await fetch('/api/accounts');
+        const container = document.getElementById('accountsList');
+        if (!container) return;
+        if (!resp.ok) {
+            container.innerHTML = '<div class="no-signals">Failed to load accounts</div>';
+            return;
+        }
+        const data = await resp.json();
+        const accounts = data.accounts || [];
+        if (accounts.length === 0) {
+            container.innerHTML = '<div class="no-signals">No accounts found. Click "Create Account" to add one.</div>';
+            return;
+        }
+        container.innerHTML = accounts.map(ac => {
+            return `
+                <div class="account-card" style="padding:12px; border-radius:6px; border:1px solid var(--border); margin-bottom:8px; background:var(--bg-tertiary);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-weight:600">${ac.name || ac._id}</div>
+                            <div style="font-size:12px; color:var(--text-secondary)">ID: ${ac._id}</div>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center">
+                            <button class="btn btn-sm" onclick="viewAccountExchanges('${ac._id}')">View Exchanges</button>
+                            <button class="btn btn-sm" onclick="toggleAccountEnabled('${ac._id}', ${ac.enabled ? 'false' : 'true'})">${ac.enabled ? 'Disable' : 'Enable'}</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        console.error('Error rendering accounts', e);
+    }
+}
+
+// View exchanges for an account and open exchanges page
+async function viewAccountExchanges(accountId) {
+    try {
+        const resp = await fetch(`/api/accounts/${accountId}/exchanges`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const exchanges = data.exchanges || [];
+        // Switch to Exchanges page and populate the exchangesList with these entries
+        showPage('exchanges');
+        const list = document.getElementById('exchangesList');
+        if (!list) return;
+        list.innerHTML = exchanges.map(ex => {
+            return `
+                <div class="exchange-card" style="padding:10px; border-radius:6px; border:1px solid var(--border); margin-bottom:8px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <div style="font-weight:600">${ex.type} (${ex._id})</div>
+                            <div style="font-size:12px; color:var(--text-secondary)">Symbols: ${(ex.symbols||[]).join(', ')}</div>
+                        </div>
+                        <div>
+                            <button class="btn btn-sm" onclick="editExchange('${ex._id}')">Edit</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) { console.error(e); }
+}
+
+async function toggleAccountEnabled(accountId, enabled) {
+    try {
+        const resp = await fetch(`/api/accounts`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _id: accountId, enabled: enabled }) });
+        if (resp.ok) renderAccounts();
+    } catch (e) { console.error(e); }
+}
+
+async function createAccountPrompt() {
+    const name = prompt('Enter account name:');
+    if (!name) return;
+    try {
+        const resp = await fetch('/api/accounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
+        if (resp.ok) renderAccounts();
+    } catch (e) { console.error(e); }
 }
 
 // Refresh Symbols & Routing with latest data from server
@@ -183,43 +267,80 @@ async function refreshSymbolsRouting() {
 async function loadDashboard() {
     try {
         console.log('Loading dashboard configuration...');
-        
-        // Load exchanges
-        const exchangesResponse = await fetch('/api/exchanges');
-        if (!exchangesResponse.ok) {
-            throw new Error(`Failed to load exchanges: ${exchangesResponse.statusText}`);
+
+        // Prefer Mongo-backed accounts/exchanges if available
+        let usingMongo = false;
+        let exchanges = {};
+        try {
+            const accountsResp = await fetch('/api/accounts');
+            if (accountsResp.ok) {
+                const accountsData = await accountsResp.json();
+                if (accountsData && Array.isArray(accountsData.accounts) && accountsData.accounts.length > 0) {
+                    // Mongo-backed mode: fetch exchanges per account
+                    usingMongo = true;
+                    for (const acct of accountsData.accounts) {
+                        try {
+                            const exResp = await fetch(`/api/accounts/${acct._id}/exchanges`);
+                            if (!exResp.ok) continue;
+                            const exData = await exResp.json();
+                            const list = exData.exchanges || [];
+                            for (const ex of list) {
+                                // Map to a config-like exchange object keyed by exchange account id
+                                const key = ex._id;
+                                exchanges[key] = {
+                                    enabled: !!ex.enabled,
+                                    api_key: (ex.credentials && ex.credentials.api_key) || '',
+                                    api_secret: (ex.credentials && ex.credentials.api_secret) ? '***' : '',
+                                    base_url: ex.base_url || (ex.connection_info && ex.connection_info.base_url) || '',
+                                    name: ex.type || key,
+                                    testnet: !!ex.testnet,
+                                    trading_mode: ex.trading_mode || ex.trading_mode || 'spot',
+                                    leverage: ex.leverage || 1,
+                                    proxy: ex.proxy || '',
+                                    symbols: ex.symbols || (ex.symbol ? [ex.symbol] : [])
+                                };
+                            }
+                        } catch (e) { /* continue */ }
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        if (!usingMongo) {
+            // Load exchanges (config-file mode)
+            const exchangesResponse = await fetch('/api/exchanges');
+            if (!exchangesResponse.ok) {
+                throw new Error(`Failed to load exchanges: ${exchangesResponse.statusText}`);
+            }
+            exchanges = await exchangesResponse.json();
+            console.log('Loaded exchanges:', Object.keys(exchanges));
+        } else {
+            console.log('Using Mongo-backed exchanges:', Object.keys(exchanges));
         }
-        const exchanges = await exchangesResponse.json();
-        console.log('Loaded exchanges:', Object.keys(exchanges));
-        
-        // Verify API keys are loaded
-        for (const [name, exchange] of Object.entries(exchanges)) {
-            console.log(`${name}: enabled=${exchange.enabled}, api_key_length=${(exchange.api_key || '').length}, has_secret=${!!exchange.api_secret}`);
-        }
-        
+
         // Load trading settings
         const tradingSettingsResponse = await fetch('/api/trading-settings');
         const tradingSettings = await tradingSettingsResponse.json();
-        
+
         // Load risk management
         const riskManagementResponse = await fetch('/api/risk-management');
         const riskManagement = await riskManagementResponse.json();
-        
+
         // Load status
         const statusResponse = await fetch('/api/status');
         const status = await statusResponse.json();
-        
+
         config = { exchanges, tradingSettings, riskManagement, status };
-        
+
         renderExchanges();
         renderTradingSettings();
         renderRiskManagement();
         renderSymbolsRouting();
         updateStatusIndicator();
-        
+
         // Check for demo mode
         checkDemoMode();
-        
+
         // Load initial signal status
         updateSignalStatus();
         updateRecentSignals();

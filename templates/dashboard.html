@@ -37,6 +37,10 @@
                     <i class="fas fa-exchange-alt"></i>
                     <span>Exchanges</span>
                 </button>
+                <button class="sidebar-item" data-page="accounts" onclick="showPage('accounts')">
+                    <i class="fas fa-user"></i>
+                    <span>Accounts</span>
+                </button>
                 <button class="sidebar-item" data-page="symbolsRouting" onclick="showPage('symbolsRouting')">
                     <i class="fas fa-route"></i>
                     <span>Symbols &amp; Routing</span>
@@ -165,6 +169,19 @@
                 </div>
             </section>
                 </div> <!-- /page-overview -->
+
+                <!-- Page: Accounts -->
+                <div id="page-accounts" style="display: none;">
+                    <section class="dashboard-section">
+                        <h2><i class="fas fa-user"></i> Accounts</h2>
+                        <div style="margin-bottom:8px;">
+                            <button class="btn btn-sm" onclick="createAccountPrompt()">Create Account</button>
+                        </div>
+                        <div id="accountsList">
+                            <!-- Accounts will be loaded here -->
+                        </div>
+                    </section>
+                </div>
 
                 <!-- Page: Exchanges -->
                 <div id="page-exchanges" style="display: none;">
