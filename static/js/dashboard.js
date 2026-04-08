@@ -3,6 +3,14 @@
 let config = {};
 let currentPage = 'overview';
 
+// Application-wide client-side state to avoid scattered global vars
+window.AppState = {
+    usingMongo: false,
+    exchanges: {},
+    accounts: [],
+    lastFetch: {}
+};
+
 // Initialize dashboard
 // Check and display demo mode
 async function checkDemoMode() {
@@ -179,6 +187,8 @@ async function renderAccounts() {
         }
         const data = await resp.json();
         const accounts = data.accounts || [];
+        // update global client state
+        window.AppState.accounts = accounts;
         if (accounts.length === 0) {
             container.innerHTML = '<div class="no-signals">No accounts found. Click "Create Account" to add one.</div>';
             return;
@@ -278,6 +288,9 @@ async function loadDashboard() {
                 if (accountsData && Array.isArray(accountsData.accounts) && accountsData.accounts.length > 0) {
                     // Mongo-backed mode: fetch exchanges per account
                     usingMongo = true;
+                    // update global client state
+                    window.AppState.usingMongo = true;
+                    window.AppState.accounts = accountsData.accounts;
                     for (const acct of accountsData.accounts) {
                         try {
                             const exResp = await fetch(`/api/accounts/${acct._id}/exchanges`);
@@ -331,6 +344,9 @@ async function loadDashboard() {
         const status = await statusResponse.json();
 
         config = { exchanges, tradingSettings, riskManagement, status };
+        // reflect into AppState for other components
+        window.AppState.exchanges = exchanges;
+        window.AppState.usingMongo = usingMongo;
 
         renderExchanges();
         renderTradingSettings();
