@@ -14,16 +14,20 @@ logger = logging.getLogger(__name__)
 class PositionManager:
     """Manages trading positions, TP levels, and stop-loss"""
     
-    def __init__(self, exchange_client: Union[object], exchange_name: str = 'mexc'):
+    def __init__(self, exchange_client: Union[object], exchange_name: str = 'mexc', exchange_account_id: str = None, account_id: str = None):
         """
         Initialize Position Manager
         
         Args:
             exchange_client: Exchange API client instance (MEXCClient, AlpacaClient, etc.)
             exchange_name: Name of the exchange ('mexc', 'alpaca', etc.)
+            exchange_account_id: Optional exchange account identifier (for multi-account support)
+            account_id: Optional logical account id
         """
         self.client = exchange_client
         self.exchange_name = exchange_name.lower()
+        self.exchange_account_id = exchange_account_id
+        self.account_id = account_id
         self.active_positions = {}  # symbol -> position_data
         
     def create_position(self, symbol: str, entry_price: float, side: str, 
@@ -60,7 +64,9 @@ class PositionManager:
             },
             'stop_loss_moved_to_entry': False,
             'exchange_sl_active': False,
-            'created_at': time.time()
+            'created_at': time.time(),
+            'exchange_account_id': self.exchange_account_id,
+            'account_id': self.account_id
         }
         
         self.active_positions[symbol] = position
@@ -89,9 +95,64 @@ class PositionManager:
             self.active_positions[symbol]['stop_loss_moved_to_entry'] = True
             logger.info(f"Stop-loss moved to entry for {symbol}")
     
-    def close_position(self, symbol: str):
-        """Close and remove position"""
+    def close_position(self, symbol: str, exit_reason: str = None):
+        """Close and remove position. Persists trade to MongoDB when available."""
         if symbol in self.active_positions:
+            pos = self.active_positions[symbol]
+            try:
+                # Attempt to persist trade information to MongoDB if configured
+                from mongo_db import insert_trade
+                mongo_available = True
+
+                exit_price = None
+                try:
+                    exit_price = float(self.client.get_ticker_price(symbol))
+                except Exception:
+                    exit_price = None
+
+                trade_doc = {
+                    'exchange_account_id': pos.get('exchange_account_id'),
+                    'account_id': pos.get('account_id'),
+                    'symbol': pos.get('symbol'),
+                    'direction': pos.get('side'),
+                    'entry_price': pos.get('entry_price'),
+                    'exit_price': exit_price,
+                    'stop_loss': pos.get('stop_loss_price'),
+                    'tp_hits': [pos['tp_hit'].get('tp1'), pos['tp_hit'].get('tp2'), pos['tp_hit'].get('tp3'), pos['tp_hit'].get('tp4'), pos['tp_hit'].get('tp5')],
+                    'r_multiple': None,
+                    'result_usd': None,
+                    'result_percent': None,
+                    'trade_duration_sec': int(time.time() - pos.get('created_at', time.time())),
+                    'max_drawdown': None,
+                    'max_profit': None,
+                    'exit_reason': exit_reason or 'CLOSE',
+                    'timestamp_open': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(pos.get('created_at', time.time()))),
+                    'timestamp_close': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime()),
+                }
+
+                # Compute simple P&L if exit_price known
+                if exit_price is not None and pos.get('initial_quantity'):
+                    qty = float(pos.get('initial_quantity', 0))
+                    entry = float(pos.get('entry_price', 0))
+                    if pos.get('side', '').upper() == 'BUY':
+                        pnl = (exit_price - entry) * qty
+                    else:
+                        pnl = (entry - exit_price) * qty
+                    trade_doc['result_usd'] = pnl
+                    try:
+                        trade_doc['result_percent'] = (pnl / (entry * qty)) * 100 if (entry * qty) != 0 else None
+                    except Exception:
+                        trade_doc['result_percent'] = None
+
+                try:
+                    insert_trade(trade_doc)
+                    logger.info(f"Persisted trade to MongoDB: {pos.get('symbol')}")
+                except Exception as e:
+                    logger.error(f"Failed to persist trade to MongoDB: {e}")
+
+            except Exception as e:
+                logger.error(f"Error while saving trade: {e}")
+
             del self.active_positions[symbol]
             logger.info(f"Position closed: {symbol}")
     

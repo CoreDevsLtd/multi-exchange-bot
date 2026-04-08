@@ -3,6 +3,14 @@
 let config = {};
 let currentPage = 'overview';
 
+// Application-wide client-side state to avoid scattered global vars
+window.AppState = {
+    usingMongo: false,
+    exchanges: {},
+    accounts: [],
+    lastFetch: {}
+};
+
 // Initialize dashboard
 // Check and display demo mode
 async function checkDemoMode() {
@@ -79,11 +87,11 @@ async function loadDemoData() {
                             <tr>
                                 <td>${timeStr}</td>
                                 <td>${trade.symbol}</td>
-                                <td><span class="signal-badge ${trade.side.toLowerCase()}">${trade.side}</span></td>
+                                <td><span class="sig-badge ${trade.side.toLowerCase()}">${trade.side}</span></td>
                                 <td>$${trade.price.toFixed(2)}</td>
                                 <td>${trade.quantity.toFixed(6)}</td>
                                 <td>$${trade.amount.toFixed(2)}</td>
-                                <td><span class="status-badge executed">${trade.status}</span></td>
+                                <td><span class="sig-badge ok">${trade.status}</span></td>
                             </tr>
                         `;
                     }).join('');
@@ -107,7 +115,7 @@ async function loadDemoData() {
                         return `
                             <tr>
                                 <td>${pos.symbol}</td>
-                                <td><span class="signal-badge ${pos.side.toLowerCase()}">${pos.side}</span></td>
+                                <td><span class="sig-badge ${pos.side.toLowerCase()}">${pos.side}</span></td>
                                 <td>$${pos.entry_price.toFixed(2)}</td>
                                 <td>$${pos.current_price.toFixed(2)}</td>
                                 <td>${pos.quantity.toFixed(6)}</td>
@@ -139,7 +147,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // High-level page switching
 function showPage(pageId) {
     currentPage = pageId;
-    const pages = ['overview', 'exchanges', 'symbolsRouting', 'tradingSettings', 'risk', 'activity'];
+    const pages = ['overview', 'exchanges', 'accounts', 'symbolsRouting', 'tradingSettings', 'risk', 'activity'];
     pages.forEach(function(p) {
         const el = document.getElementById('page-' + p);
         if (el) {
@@ -159,9 +167,279 @@ function showPage(pageId) {
     // Refresh page-specific data when navigating
     if (pageId === 'symbolsRouting') {
         refreshSymbolsRouting();
+    } else if (pageId === 'accounts') {
+        renderAccounts();
     } else if (pageId === 'activity') {
         updateRecentSignals();
         if (typeof loadDemoData === 'function') loadDemoData();
+    }
+}
+
+// HTML-escape helper
+function escapeHtml(s) {
+    return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// Render accounts list (Mongo-backed)
+async function renderAccounts() {
+    try {
+        const resp = await fetch('/api/accounts');
+        const container = document.getElementById('accountsList');
+        if (!container) return;
+        if (!resp.ok) {
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-exclamation-circle"></i><div class="empty-title">Failed to load accounts</div><p>Make sure MONGO_URI is configured.</p></div>`;
+            return;
+        }
+        const data = await resp.json();
+        const accounts = data.accounts || [];
+        window.AppState.accounts = accounts;
+
+        if (accounts.length === 0) {
+            container.innerHTML = `<div class="empty-state"><i class="fas fa-user-plus"></i><div class="empty-title">No accounts yet</div><p>Create your first account to get started.</p></div>`;
+            return;
+        }
+
+        container.innerHTML = accounts.map(ac => {
+            const enabled = ac.enabled !== false;
+            return `
+                <div class="account-card ${enabled ? 'enabled' : ''}">
+                    <div class="account-card-header">
+                        <div>
+                            <div class="account-card-name">${escapeHtml(ac.name || ac._id)}</div>
+                            <div class="account-card-id">${escapeHtml(ac._id)}</div>
+                        </div>
+                        <span class="badge ${enabled ? 'badge-success' : 'badge-neutral'}">${enabled ? 'Enabled' : 'Disabled'}</span>
+                    </div>
+                    <div class="account-card-footer">
+                        <button class="btn btn-sm btn-primary" onclick="openCreateExchangeModal('${ac._id}')"><i class="fas fa-plus"></i> Add Exchange</button>
+                        <button class="btn btn-sm" onclick="viewAccountExchanges('${ac._id}')"><i class="fas fa-list"></i> Exchanges</button>
+                        <button class="btn btn-sm" onclick="openAccountModal('${ac._id}')"><i class="fas fa-edit"></i> Edit</button>
+                        <button class="btn btn-sm" onclick="toggleAccountEnabled('${ac._id}', ${!enabled})">${enabled ? 'Disable' : 'Enable'}</button>
+                        <button class="btn btn-sm btn-danger btn-icon" onclick="deleteAccount('${ac._id}')"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        renderOverviewStats();
+    } catch (e) {
+        console.error('Error rendering accounts', e);
+    }
+}
+
+// Edit exchange (fetch from API then open modal)
+async function editExchange(exchangeId) {
+    try {
+        const resp = await fetch(`/api/exchanges/${exchangeId}`);
+        if (!resp.ok) { showToast('Failed to fetch exchange', 'error'); return; }
+        const data = await resp.json();
+        // Map API response to the shape expected by openExchangeModal
+        const mapped = {
+            enabled: data.enabled || false,
+            api_key: data.api_key || '',
+            api_secret: data.api_secret || '',
+            base_url: data.base_url || '',
+            name: data.name || exchangeId,
+            type: (data.name || exchangeId).toLowerCase(),
+            testnet: data.testnet || false,
+            trading_mode: data.trading_mode || 'spot',
+            leverage: data.leverage || 1,
+            proxy: data.proxy || '',
+            symbols: data.symbols || [],
+            account_id: data.account_id || ''
+        };
+        if (!config.exchanges) config.exchanges = {};
+        config.exchanges[exchangeId] = mapped;
+        const parentAcct = document.getElementById('exchangeParentAccount');
+        if (parentAcct) parentAcct.value = '';
+        openExchangeModal(exchangeId);
+    } catch (e) {
+        console.error('Error fetching exchange for edit', e);
+        showToast('Error fetching exchange', 'error');
+    }
+}
+
+// Delete exchange (mongo-backed or config-file)
+async function deleteExchange(exchangeId) {
+    if (!confirm('Are you sure you want to delete exchange ' + exchangeId + '? This cannot be undone.')) return;
+    try {
+        const resp = await fetch(`/api/exchanges/${exchangeId}`, { method: 'DELETE' });
+        const result = await resp.json();
+        if (resp.ok && result.status === 'success') {
+            showToast('Exchange deleted', 'success');
+            await loadDashboard();
+        } else {
+            showToast(result.error || 'Failed to delete exchange', 'error');
+        }
+    } catch (e) {
+        console.error('Error deleting exchange', e);
+        showToast('Error deleting exchange', 'error');
+    }
+}
+
+// View exchanges for an account and open exchanges page
+async function viewAccountExchanges(accountId) {
+    try {
+        const resp = await fetch(`/api/accounts/${accountId}/exchanges`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const exchanges = data.exchanges || [];
+        showPage('exchanges');
+        const list = document.getElementById('exchangesList');
+        const actions = document.getElementById('exchangesPageActions');
+        if (!list) return;
+
+        if (actions) {
+            actions.innerHTML = `
+                <button class="btn" onclick="renderExchanges(); document.getElementById('exchangesPageActions').innerHTML = '<button class=\\'btn btn-primary\\' onclick=\\'showPage(\\'accounts\\')\\'><i class=\\'fas fa-plus\\'></i> Add Exchange Account</button>'">
+                    <i class="fas fa-arrow-left"></i> All Exchanges
+                </button>
+                <button class="btn btn-primary" onclick="openCreateExchangeModal('${accountId}')">
+                    <i class="fas fa-plus"></i> Add Exchange
+                </button>`;
+        }
+
+        if (exchanges.length === 0) {
+            list.innerHTML = `<div class="empty-state"><i class="fas fa-plug"></i><div class="empty-title">No exchange accounts</div><p>Add an exchange account to this account.</p></div>`;
+            return;
+        }
+
+        let exchangeStatus = {};
+        try {
+            const sr = await fetch('/api/exchanges/status');
+            if (sr.ok) exchangeStatus = await sr.json();
+        } catch (e) {}
+
+        list.innerHTML = '';
+        exchanges.forEach(ex => {
+            const key = ex._id;
+            const exObj = {
+                enabled: ex.enabled !== false,
+                name: (ex.type || key).toUpperCase(),
+                type: (ex.type || key).toLowerCase(),
+                trading_mode: ex.trading_mode || 'spot',
+                leverage: ex.leverage || 1,
+                testnet: !!ex.testnet,
+                paper_trading: !!ex.paper_trading,
+                symbols: ex.symbols || (ex.symbol ? [ex.symbol] : []),
+                account_id: accountId
+            };
+            list.appendChild(_buildExchangeCard(key, exObj, exchangeStatus[key] || {}));
+        });
+    } catch (e) { console.error(e); }
+}
+
+// Delete account and all its exchange accounts
+async function deleteAccount(accountId) {
+    if (!confirm(`Delete account "${accountId}" and ALL its exchange accounts? This cannot be undone.`)) return;
+    try {
+        const resp = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
+        const result = await resp.json();
+        if (resp.ok && result.status === 'success') {
+            showToast('Account deleted', 'success');
+            await loadDashboard();
+            renderAccounts();
+        } else {
+            showToast(result.error || 'Failed to delete account', 'error');
+        }
+    } catch (e) {
+        console.error('Error deleting account', e);
+        showToast('Error deleting account', 'error');
+    }
+}
+
+// Open exchange modal in create mode under a logical account
+function openCreateExchangeModal(accountId) {
+    const modal = document.getElementById('exchangeModal');
+
+    // Show exchange type selector
+    const typeGroup = document.getElementById('exchangeTypeGroup');
+    if (typeGroup) typeGroup.style.display = 'block';
+
+    // Reset hidden fields
+    document.getElementById('exchangeName').value = '';
+    document.getElementById('exchangeParentAccount').value = accountId || '';
+    document.getElementById('modalTitle').textContent = 'Add Exchange Account';
+    document.getElementById('exchangeEnabled').checked = true;
+    document.getElementById('exchangeApiKey').value = '';
+    const secretEl = document.getElementById('exchangeApiSecret');
+    secretEl.value = '';
+    secretEl.dataset.hasSecret = 'false';
+    document.getElementById('exchangeBaseUrl').value = '';
+
+    // Default to bybit and apply its field set
+    const typeEl = document.getElementById('newExchangeType');
+    if (typeEl) typeEl.value = 'bybit';
+    _applyExchangeTypeUi('bybit', {});
+
+    modal.classList.add('show');
+}
+
+async function toggleAccountEnabled(accountId, enabled) {
+    try {
+        const resp = await fetch(`/api/accounts`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ _id: accountId, enabled: enabled }) });
+        if (resp.ok) renderAccounts();
+    } catch (e) { console.error(e); }
+}
+
+async function createAccountPrompt() {
+    // Open account modal for creation
+    openAccountModal();
+}
+
+// Open Account modal for create or edit
+function openAccountModal(account) {
+    const modal = document.getElementById('accountModal');
+    const idEl = document.getElementById('accountId');
+    const nameEl = document.getElementById('accountName');
+    const enabledEl = document.getElementById('accountEnabled');
+
+    // Accept either account object or account id string
+    if (typeof account === 'string') {
+        account = (window.AppState && window.AppState.accounts) ? window.AppState.accounts.find(a => a._id === account) : null;
+    }
+
+    if (account) {
+        idEl.value = account._id || '';
+        nameEl.value = account.name || account._id || '';
+        enabledEl.checked = account.enabled !== false;
+        document.getElementById('accountModalTitle').textContent = 'Edit Account';
+    } else {
+        idEl.value = '';
+        nameEl.value = '';
+        enabledEl.checked = true;
+        document.getElementById('accountModalTitle').textContent = 'Create Account';
+    }
+
+    modal.classList.add('show');
+}
+
+function closeAccountModal() {
+    const modal = document.getElementById('accountModal');
+    modal.classList.remove('show');
+}
+
+async function saveAccount() {
+    const id = document.getElementById('accountId').value.trim();
+    const name = document.getElementById('accountName').value.trim();
+    const enabled = document.getElementById('accountEnabled').checked;
+    if (!name) { showToast('Please enter a name for the account', 'error'); return; }
+    try {
+        const body = { name, enabled };
+        if (id) body._id = id;
+        const resp = await fetch('/api/accounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const result = await resp.json();
+        if (resp.ok && result.status === 'success') {
+            showToast('Account saved', 'success');
+            closeAccountModal();
+            renderAccounts();
+            // reload exchanges in case new account created
+            await loadDashboard();
+        } else {
+            showToast(result.error || 'Failed to save account', 'error');
+        }
+    } catch (e) {
+        console.error('Error saving account', e);
+        showToast('Error saving account', 'error');
     }
 }
 
@@ -183,43 +461,93 @@ async function refreshSymbolsRouting() {
 async function loadDashboard() {
     try {
         console.log('Loading dashboard configuration...');
-        
-        // Load exchanges
-        const exchangesResponse = await fetch('/api/exchanges');
-        if (!exchangesResponse.ok) {
-            throw new Error(`Failed to load exchanges: ${exchangesResponse.statusText}`);
+
+        // Prefer Mongo-backed accounts/exchanges if available
+        let usingMongo = false;
+        let exchanges = {};
+        try {
+            const accountsResp = await fetch('/api/accounts');
+            if (accountsResp.ok) {
+                const accountsData = await accountsResp.json();
+                if (accountsData && Array.isArray(accountsData.accounts) && accountsData.accounts.length > 0) {
+                    // Mongo-backed mode: fetch exchanges per account
+                    usingMongo = true;
+                    // update global client state
+                    window.AppState.usingMongo = true;
+                    window.AppState.accounts = accountsData.accounts;
+                    for (const acct of accountsData.accounts) {
+                        try {
+                            const exResp = await fetch(`/api/accounts/${acct._id}/exchanges`);
+                            if (!exResp.ok) continue;
+                            const exData = await exResp.json();
+                            const list = exData.exchanges || [];
+                            for (const ex of list) {
+                                // Map to a config-like exchange object keyed by exchange account id
+                                const key = ex._id;
+                                exchanges[key] = {
+                                    enabled: !!ex.enabled,
+                                    api_key: (ex.credentials && ex.credentials.api_key) || '',
+                                    api_secret: (ex.credentials && ex.credentials.api_secret) ? '***' : '',
+                                    base_url: ex.base_url || (ex.connection_info && ex.connection_info.base_url) || '',
+                                    name: ex.type || key,
+                                    type: (ex.type || key).toLowerCase(),
+                                    testnet: !!ex.testnet,
+                                    trading_mode: ex.trading_mode || 'spot',
+                                    leverage: ex.leverage || 1,
+                                    proxy: ex.proxy || '',
+                                    symbols: ex.symbols || (ex.symbol ? [ex.symbol] : []),
+                                    account_id: acct._id
+                                };
+                            }
+                        } catch (e) { /* continue */ }
+                    }
+                }
+            }
+        } catch (e) { /* ignore */ }
+
+        if (!usingMongo) {
+            // Load exchanges (config-file mode)
+            const exchangesResponse = await fetch('/api/exchanges');
+            if (!exchangesResponse.ok) {
+                throw new Error(`Failed to load exchanges: ${exchangesResponse.statusText}`);
+            }
+            exchanges = await exchangesResponse.json();
+            // Ensure each config-file exchange has a `type` field for modal rendering
+            for (const [key, ex] of Object.entries(exchanges)) {
+                if (!ex.type) ex.type = key.toLowerCase();
+            }
+            console.log('Loaded exchanges:', Object.keys(exchanges));
+        } else {
+            console.log('Using Mongo-backed exchanges:', Object.keys(exchanges));
         }
-        const exchanges = await exchangesResponse.json();
-        console.log('Loaded exchanges:', Object.keys(exchanges));
-        
-        // Verify API keys are loaded
-        for (const [name, exchange] of Object.entries(exchanges)) {
-            console.log(`${name}: enabled=${exchange.enabled}, api_key_length=${(exchange.api_key || '').length}, has_secret=${!!exchange.api_secret}`);
-        }
-        
+
         // Load trading settings
         const tradingSettingsResponse = await fetch('/api/trading-settings');
         const tradingSettings = await tradingSettingsResponse.json();
-        
+
         // Load risk management
         const riskManagementResponse = await fetch('/api/risk-management');
         const riskManagement = await riskManagementResponse.json();
-        
+
         // Load status
         const statusResponse = await fetch('/api/status');
         const status = await statusResponse.json();
-        
+
         config = { exchanges, tradingSettings, riskManagement, status };
-        
+        // reflect into AppState for other components
+        window.AppState.exchanges = exchanges;
+        window.AppState.usingMongo = usingMongo;
+
         renderExchanges();
         renderTradingSettings();
         renderRiskManagement();
         renderSymbolsRouting();
+        renderOverviewStats();
         updateStatusIndicator();
-        
+
         // Check for demo mode
         checkDemoMode();
-        
+
         // Load initial signal status
         updateSignalStatus();
         updateRecentSignals();
@@ -232,166 +560,120 @@ async function loadDashboard() {
     }
 }
 
+// Get 2-letter abbreviation for an exchange type
+function _getExchangeTypeAbbr(type) {
+    const t = (type || '').toLowerCase();
+    if (t === 'bybit') return 'BY';
+    if (t === 'mexc') return 'MX';
+    if (t === 'alpaca') return 'AL';
+    if (t === 'ibkr') return 'IB';
+    return (type || '?').substring(0, 2).toUpperCase();
+}
+
+// Build an exchange card DOM element
+function _buildExchangeCard(key, exchange, status) {
+    const enabled = exchange.enabled !== false;
+    const type = (exchange.type || exchange.name || key).toLowerCase();
+    const abbr = _getExchangeTypeAbbr(type);
+    const connected = !!(status && status.connected);
+
+    // Symbols
+    const symbols = Array.isArray(exchange.symbols) ? exchange.symbols : [];
+    const symbolsHtml = symbols.length > 0
+        ? symbols.map(s => `<span class="symbol-badge">${escapeHtml(s)}</span>`).join('')
+        : '<span class="text-muted" style="font-size:11px;">No symbols</span>';
+
+    // Balance
+    let balanceHtml = '';
+    if (connected && status.balances && Object.keys(status.balances).length > 0) {
+        const parts = [];
+        for (const [asset, bal] of Object.entries(status.balances)) {
+            let total = 0;
+            if (typeof bal === 'object' && bal !== null) total = parseFloat(bal.total || bal.free || 0);
+            else if (typeof bal === 'number') total = bal;
+            else total = parseFloat(bal) || 0;
+            if (total > 0 && !isNaN(total)) {
+                const fmt = total >= 1 ? total.toFixed(2) : total >= 0.01 ? total.toFixed(4) : total.toFixed(8);
+                parts.push(`${asset}: ${fmt}`);
+            }
+        }
+        if (parts.length > 0) {
+            balanceHtml = `<div class="exchange-card-row"><span class="exchange-card-row-label">Balance</span><span class="exchange-card-row-value" style="font-size:11px;">${parts.slice(0, 4).join(' · ')}</span></div>`;
+        }
+    }
+
+    // Mode
+    let modeText = exchange.trading_mode
+        ? (exchange.trading_mode.charAt(0).toUpperCase() + exchange.trading_mode.slice(1))
+        : (exchange.paper_trading ? 'Paper' : (exchange.testnet ? 'Testnet' : 'Live'));
+    const leverageText = (exchange.leverage && exchange.leverage > 1) ? ` · ${exchange.leverage}x` : '';
+
+    const div = document.createElement('div');
+    div.className = `exchange-card ${enabled ? 'enabled' : 'disabled'}`;
+    div.innerHTML = `
+        <div class="exchange-card-header">
+            <div class="exchange-card-title-row">
+                <div class="exchange-type-icon ${type}">${abbr}</div>
+                <div>
+                    <div class="exchange-card-name">${escapeHtml(exchange.name || type.toUpperCase())}</div>
+                    <div class="exchange-card-id">${escapeHtml(key)}</div>
+                </div>
+            </div>
+            <span class="badge ${connected ? 'badge-success' : 'badge-neutral'}">${connected ? '● Connected' : '○ Offline'}</span>
+        </div>
+        <div class="exchange-card-body">
+            <div class="exchange-card-row">
+                <span class="exchange-card-row-label">Mode</span>
+                <span class="exchange-card-row-value">${modeText}${leverageText}</span>
+            </div>
+            ${balanceHtml}
+            <div class="exchange-symbols-row">${symbolsHtml}</div>
+        </div>
+        <div class="exchange-card-footer">
+            <div class="exchange-card-footer-left">
+                <button class="btn btn-sm" onclick="openExchangeModal('${key}')"><i class="fas fa-cog"></i> Configure</button>
+                <button class="btn btn-sm" onclick="openSymbolsManager('${key}')"><i class="fas fa-list"></i> Symbols</button>
+                <button class="btn btn-sm btn-danger btn-icon" onclick="deleteExchange('${key}')"><i class="fas fa-trash"></i></button>
+            </div>
+            <div class="exchange-card-footer-right">
+                <label class="toggle" title="${enabled ? 'Disable' : 'Enable'}">
+                    <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleExchange('${key}', this.checked)">
+                    <span class="toggle-track"></span>
+                </label>
+            </div>
+        </div>
+    `;
+    return div;
+}
+
 // Render exchanges
 async function renderExchanges() {
     const list = document.getElementById('exchangesList');
-    list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">Loading exchanges...</div>';
-    
-    // Ensure config.exchanges exists
+    if (!list) return;
+    list.innerHTML = '<div class="empty-state"><i class="fas fa-spinner fa-spin"></i><p>Loading exchanges...</p></div>';
+
     if (!config || !config.exchanges) {
-        console.error('Config or exchanges not loaded');
-        list.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--error);">Error: Exchanges configuration not loaded</div>';
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-exclamation-circle"></i><div class="empty-title">Not loaded</div><p>Exchanges configuration not available.</p></div>';
         return;
     }
-    
-    console.log('Rendering exchanges:', Object.keys(config.exchanges));
-    
-    // Fetch exchange status (connection + balances)
+
     let exchangeStatus = {};
     try {
         const response = await fetch('/api/exchanges/status');
-        if (response.ok) {
-            exchangeStatus = await response.json();
-        }
-    } catch (error) {
-        console.error('Error fetching exchange status:', error);
+        if (response.ok) exchangeStatus = await response.json();
+    } catch (error) { console.error('Error fetching exchange status:', error); }
+
+    const entries = Object.entries(config.exchanges);
+    if (entries.length === 0) {
+        list.innerHTML = '<div class="empty-state"><i class="fas fa-plug"></i><div class="empty-title">No exchange accounts</div><p>Go to Accounts to add an exchange account.</p></div>';
+        return;
     }
-    
+
     list.innerHTML = '';
-    
-    // Show all configured exchanges
-    Object.entries(config.exchanges)
-        .forEach(([key, exchange]) => {
-            console.log(`Rendering exchange ${key}:`, {
-                enabled: exchange.enabled,
-                has_key: !!(exchange.api_key),
-                has_secret: !!(exchange.api_secret)
-            });
-        const item = document.createElement('div');
-        item.className = `exchange-item ${exchange.enabled ? 'enabled' : ''}`;
-        
-        const status = exchangeStatus[key] || {};
-        const modeText = exchange.paper_trading !== undefined 
-            ? (exchange.paper_trading ? 'Paper' : 'Live') 
-            : (exchange.name === 'MEXC' ? 'Live' : '');
-        
-        // Connection status indicator (only show if connected, hide errors)
-        let connectionStatus = '';
-        if (status.connected) {
-            connectionStatus = '<span style="color: var(--success); font-size: 10px;">● Connected</span>';
-        } else {
-            // Don't show error messages, just show "Not connected" if not connected
-            connectionStatus = '<span style="color: var(--text-muted); font-size: 10px;">● Not connected</span>';
-        }
-        
-        // Small summary of configured symbols for this exchange
-        let symbolsSummary = '';
-        const symbols = Array.isArray(exchange.symbols) ? exchange.symbols : [];
-        if (symbols.length > 0) {
-            const preview = symbols.slice(0, 3).join(', ');
-            const moreCount = symbols.length - 3;
-            const moreText = moreCount > 0 ? ` (+${moreCount} more)` : '';
-            symbolsSummary = `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Symbols: ${preview}${moreText}</div>`;
-        } else {
-            symbolsSummary = `<div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Symbols: None configured</div>`;
-        }
-        
-        // Format balances - show all balances, not just > 0.01
-        let balanceText = '';
-        if (status.connected) {
-            // Exchange is connected, check if balances were fetched
-            if (status.balances !== undefined && status.balances !== null) {
-                // Balances were fetched (even if empty)
-                if (Object.keys(status.balances).length > 0) {
-                    const balanceParts = [];
-                    try {
-                        for (const [asset, bal] of Object.entries(status.balances)) {
-                            try {
-                                // Handle different balance formats
-                                let total = 0;
-                                if (typeof bal === 'object' && bal !== null) {
-                                    // Standard format: {free, locked, total}
-                                    total = parseFloat(bal.total || bal.free || 0);
-                                } else if (typeof bal === 'number') {
-                                    // Direct number format
-                                    total = parseFloat(bal);
-                                } else if (typeof bal === 'string') {
-                                    // String format
-                                    total = parseFloat(bal) || 0;
-                                }
-                                
-                                if (total > 0 && !isNaN(total)) {
-                                    // Format with appropriate decimal places
-                                    let formatted;
-                                    if (total >= 1) {
-                                        formatted = total.toFixed(2);
-                                    } else if (total >= 0.01) {
-                                        formatted = total.toFixed(4);
-                                    } else {
-                                        formatted = total.toFixed(8);
-                                    }
-                                    balanceParts.push(`${asset}: ${formatted}`);
-                                }
-                            } catch (e) {
-                                console.error(`Error parsing balance for ${asset}:`, e, bal);
-                                // Skip this balance and continue
-                            }
-                        }
-                    } catch (e) {
-                        console.error('Error processing balances:', e, status.balances);
-                        balanceText = `<div style="font-size: 11px; color: var(--error); margin-top: 4px;">⚠️ Error loading balances</div>`;
-                    }
-                    if (balanceParts.length > 0) {
-                        balanceText = `<div style="font-size: 11px; color: var(--text-secondary); margin-top: 4px; font-weight: 500;">💰 ${balanceParts.join(' • ')}</div>`;
-                    } else {
-                        // Connected but all balances are zero
-                        balanceText = `<div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">💰 All balances: 0.00</div>`;
-                    }
-                } else {
-                    // Connected but balances object is empty (no assets with balance)
-                    balanceText = `<div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">💰 All balances: 0.00</div>`;
-                }
-                // MEXC: Show note about Spot-only balance (common cause of balance mismatch)
-                if (key === 'mexc' && status.connected) {
-                    balanceText += `<div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;"><a href="https://www.mexc.com/user/transfer" target="_blank" rel="noopener" style="color: var(--accent);">Balance mismatch?</a> Bot shows Spot wallet only. Transfer from Fiat/Earn to Spot on MEXC.</div>`;
-                }
-            } else {
-                // Connected but balances not fetched yet
-                balanceText = `<div style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">Loading balances...</div>`;
-            }
-        }
-        // If not connected, don't show balance text
-        
-        item.innerHTML = `
-            <div class="exchange-item-left">
-                <div>
-                    <div class="exchange-name">${exchange.name}</div>
-                    <div class="exchange-status">
-                        ${exchange.enabled ? 'Enabled' : 'Disabled'} ${modeText ? '• ' + modeText : ''}
-                        ${connectionStatus ? ' • ' + connectionStatus : ''}
-                    </div>
-                    ${balanceText}
-                    ${symbolsSummary}
-                </div>
-            </div>
-            <div class="exchange-item-right">
-                <label class="exchange-toggle">
-                    <input type="checkbox" ${exchange.enabled ? 'checked' : ''} 
-                           onchange="toggleExchange('${key}', this.checked)">
-                    <span class="exchange-toggle-slider"></span>
-                </label>
-                <div style="display: flex; gap: 6px;">
-                    <button class="btn btn-sm" onclick="openExchangeModal('${key}')" title="Configure">
-                        <i class="fas fa-cog"></i>
-                    </button>
-                    <button class="btn btn-sm" onclick="openSymbolsManager('${key}')" title="Manage Symbols">
-                        <i class="fas fa-list"></i>
-                    </button>
-                </div>
-            </div>
-        `;
-        list.appendChild(item);
+    entries.forEach(([key, exchange]) => {
+        list.appendChild(_buildExchangeCard(key, exchange, exchangeStatus[key] || {}));
     });
+    renderOverviewStats();
 }
 
 // Render trading settings
@@ -426,15 +708,19 @@ function renderRiskManagement() {
 function updateStatusIndicator() {
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
-    
-    const enabledExchanges = Object.values(config.exchanges).filter(e => e.enabled).length;
-    
+
+    const enabledExchanges = Object.values(config.exchanges || {}).filter(e => e.enabled).length;
+    const total = Object.keys(config.exchanges || {}).length;
+
     if (enabledExchanges > 0) {
         statusDot.className = 'status-dot active';
-        statusText.textContent = `${enabledExchanges} Exchange(s) Active`;
+        statusText.textContent = `${enabledExchanges} of ${total} Exchange Account(s) Active`;
+    } else if (total > 0) {
+        statusDot.className = 'status-dot inactive';
+        statusText.textContent = `${total} Exchange Account(s) — None Enabled`;
     } else {
         statusDot.className = 'status-dot inactive';
-        statusText.textContent = 'No Exchanges Active';
+        statusText.textContent = 'No Exchange Accounts Configured';
     }
 }
 
@@ -512,103 +798,104 @@ function openIbkrGatewayLogin() {
 // Open exchange modal
 async function openExchangeModal(exchangeName) {
     const exchange = config.exchanges[exchangeName];
+    if (!exchange) {
+        showToast('Exchange configuration not found', 'error');
+        return;
+    }
+    // Determine the canonical type (bybit/mexc/alpaca/ibkr) from the 'type' field
+    // or fall back to the name/exchangeName for legacy config-file mode
+    const exchangeType = (exchange.type || exchange.name || exchangeName).toLowerCase();
+
     const modal = document.getElementById('exchangeModal');
-    var credFields = document.querySelectorAll('.exchange-credential-field');
-    var ibkrGw = document.getElementById('ibkrGatewayGroup');
-    credFields.forEach(function(el) { el.style.display = 'block'; });
-    if (ibkrGw) ibkrGw.style.display = 'none';
-    
+
+    // Hide type selector (this is edit mode, not create)
+    const typeGroup = document.getElementById('exchangeTypeGroup');
+    if (typeGroup) typeGroup.style.display = 'none';
+
     document.getElementById('exchangeName').value = exchangeName;
-    document.getElementById('modalTitle').textContent = `Configure ${exchange.name}`;
+    document.getElementById('exchangeParentAccount').value = exchange.account_id || '';
+    document.getElementById('modalTitle').textContent = `Configure ${exchange.name || exchangeName}`;
     document.getElementById('exchangeEnabled').checked = exchange.enabled || false;
-    // Set API key (show actual value if saved)
+
     const apiKeyField = document.getElementById('exchangeApiKey');
     apiKeyField.value = exchange.api_key || '';
-    console.log(`Loading exchange ${exchangeName}: API Key length = ${(exchange.api_key || '').length}`);
-    
-    // Set API secret (show '***' if secret exists, empty if not)
+
     const apiSecretField = document.getElementById('exchangeApiSecret');
     apiSecretField.value = (exchange.api_secret && exchange.api_secret !== '') ? '***' : '';
-    // Store original secret status for later comparison
     apiSecretField.dataset.hasSecret = (exchange.api_secret && exchange.api_secret !== '') ? 'true' : 'false';
-    console.log(`Loading exchange ${exchangeName}: API Secret present = ${apiSecretField.dataset.hasSecret}`);
     document.getElementById('exchangeBaseUrl').value = exchange.base_url || '';
-    
-    // Show paper trading option for Alpaca
+
+    // Apply type-specific UI configuration
+    _applyExchangeTypeUi(exchangeType, exchange);
+
+    modal.classList.add('show');
+}
+
+// Apply type-specific field visibility and values to the exchange modal.
+// Called both from openExchangeModal (edit) and openCreateExchangeModal (create).
+function _applyExchangeTypeUi(exchangeType, exchange) {
+    exchange = exchange || {};
+    const credFields = document.querySelectorAll('.exchange-credential-field');
+    const ibkrGw = document.getElementById('ibkrGatewayGroup');
     const paperTradingGroup = document.getElementById('paperTradingGroup');
-    if (exchange.paper_trading !== undefined) {
-        paperTradingGroup.style.display = 'block';
-        document.getElementById('exchangePaperTrading').checked = exchange.paper_trading || false;
-    } else {
-        paperTradingGroup.style.display = 'none';
-    }
-    
-    // Show sub-account option for MEXC
     const subAccountGroup = document.getElementById('subAccountGroup');
     const subAccountIdInput = document.getElementById('exchangeSubAccountId');
     const mexcWarning = document.getElementById('mexcWarning');
-    
-    // Trading mode + leverage (for exchanges that support it)
     const tradingModeGroup = document.getElementById('tradingModeGroup');
     const tradingModeSelect = document.getElementById('exchangeTradingMode');
-
-    // Show leverage option for IBKR / futures-capable exchanges
     const leverageGroup = document.getElementById('leverageGroup');
-    
-    if (exchangeName === 'mexc') {
+    const proxyGroup = document.getElementById('proxyGroup');
+
+    // Reset to defaults
+    credFields.forEach(el => el.style.display = 'block');
+    if (ibkrGw) ibkrGw.style.display = 'none';
+    paperTradingGroup.style.display = 'none';
+    subAccountGroup.style.display = 'none';
+    mexcWarning.style.display = 'none';
+    tradingModeGroup.style.display = 'none';
+    leverageGroup.style.display = 'none';
+    proxyGroup.style.display = 'none';
+    tradingModeSelect.onchange = null;
+
+    if (exchangeType === 'mexc') {
         subAccountGroup.style.display = 'block';
-        const useSubAccountCheckbox = document.getElementById('exchangeUseSubAccount');
-        useSubAccountCheckbox.checked = exchange.use_sub_account || false;
-        subAccountIdInput.value = exchange.sub_account_id || '';
-        
-        // Show sub-account ID input when checkbox is checked
-        const toggleSubAccountInput = function() {
-            subAccountIdInput.style.display = useSubAccountCheckbox.checked ? 'block' : 'none';
-        };
-        useSubAccountCheckbox.addEventListener('change', toggleSubAccountInput);
-        toggleSubAccountInput(); // Set initial state
-        
-        // Show MEXC real trading warning
         mexcWarning.style.display = 'block';
-        // MEXC currently spot-only in this UI
-        tradingModeGroup.style.display = 'none';
-        leverageGroup.style.display = 'none';
-    } else if (exchangeName === 'ibkr') {
-        credFields.forEach(function(el) { el.style.display = 'none'; });
+        const useSubCb = document.getElementById('exchangeUseSubAccount');
+        useSubCb.checked = exchange.use_sub_account || false;
+        subAccountIdInput.value = exchange.sub_account_id || '';
+        const toggleSub = () => { subAccountIdInput.style.display = useSubCb.checked ? 'block' : 'none'; };
+        useSubCb.onchange = toggleSub;
+        toggleSub();
+        document.getElementById('exchangeBaseUrl').placeholder = 'https://api.mexc.com';
+
+    } else if (exchangeType === 'ibkr') {
+        credFields.forEach(el => el.style.display = 'none');
         if (ibkrGw) ibkrGw.style.display = 'block';
-        var bu = document.getElementById('exchangeBaseUrl');
-        bu.placeholder = 'https://localhost:5000';
-        tradingModeGroup.style.display = 'none';
         leverageGroup.style.display = 'block';
         document.getElementById('exchangeLeverage').value = exchange.leverage || '1';
-        subAccountGroup.style.display = 'none';
-        mexcWarning.style.display = 'none';
-    } else if (exchangeName === 'bybit') {
+        document.getElementById('exchangeBaseUrl').placeholder = 'https://localhost:5000';
+
+    } else if (exchangeType === 'bybit') {
         tradingModeGroup.style.display = 'block';
         const mode = (exchange.trading_mode || 'spot').toLowerCase();
         tradingModeSelect.value = mode === 'futures' ? 'futures' : 'spot';
-
         leverageGroup.style.display = (tradingModeSelect.value === 'futures') ? 'block' : 'none';
         document.getElementById('exchangeLeverage').value = exchange.leverage || '1';
-
-        document.getElementById('proxyGroup').style.display = 'block';
+        proxyGroup.style.display = 'block';
         document.getElementById('exchangeProxy').value = exchange.proxy || '';
-
-        subAccountGroup.style.display = 'none';
-        mexcWarning.style.display = 'none';
-
+        document.getElementById('exchangeBaseUrl').placeholder = 'https://api.bybit.com';
         tradingModeSelect.onchange = function() {
             leverageGroup.style.display = (tradingModeSelect.value === 'futures') ? 'block' : 'none';
         };
+
+    } else if (exchangeType === 'alpaca') {
+        paperTradingGroup.style.display = 'block';
+        document.getElementById('exchangePaperTrading').checked = exchange.paper_trading !== undefined ? exchange.paper_trading : true;
+        document.getElementById('exchangeBaseUrl').placeholder = 'https://paper-api.alpaca.markets';
+
     } else {
-        subAccountGroup.style.display = 'none';
-        mexcWarning.style.display = 'none';
-        tradingModeGroup.style.display = 'none';
-        leverageGroup.style.display = 'none';
-        document.getElementById('proxyGroup').style.display = 'none';
+        document.getElementById('exchangeBaseUrl').placeholder = '';
     }
-    
-    modal.classList.add('show');
 }
 
 // Close modal
@@ -619,53 +906,53 @@ function closeModal() {
 // Save exchange
 async function saveExchange() {
     const exchangeName = document.getElementById('exchangeName').value;
-    const exchange = config.exchanges[exchangeName];
-    
+    const parentAcct = document.getElementById('exchangeParentAccount');
+    const parentAccountId = parentAcct ? parentAcct.value.trim() : '';
+
+    // Determine the real exchange type (bybit/mexc/alpaca/ibkr)
+    // In create mode, use the type selector; in edit mode, use stored config
+    let exchangeType;
+    if (!exchangeName && parentAccountId) {
+        // Create mode — type comes from selector
+        const typeEl = document.getElementById('newExchangeType');
+        exchangeType = typeEl ? typeEl.value : 'bybit';
+    } else {
+        const exchange = (config.exchanges || {})[exchangeName] || {};
+        exchangeType = (exchange.type || exchange.name || exchangeName).toLowerCase();
+    }
+
+    const exchange = (config.exchanges || {})[exchangeName] || {};
+
     const data = {
         enabled: document.getElementById('exchangeEnabled').checked,
         api_key: document.getElementById('exchangeApiKey').value.trim(),
         api_secret: document.getElementById('exchangeApiSecret').value.trim(),
-        base_url: document.getElementById('exchangeBaseUrl').value
+        base_url: document.getElementById('exchangeBaseUrl').value.trim()
     };
-    
-    // Only include paper_trading if it exists for this exchange
-    if (exchange.paper_trading !== undefined) {
+
+    // Type-specific fields
+    if (exchangeType === 'alpaca') {
         data.paper_trading = document.getElementById('exchangePaperTrading').checked;
     }
-    
-    // Include sub-account settings for MEXC
-    if (exchangeName === 'mexc') {
+    if (exchangeType === 'mexc') {
         data.use_sub_account = document.getElementById('exchangeUseSubAccount').checked;
         data.sub_account_id = document.getElementById('exchangeSubAccountId').value;
     }
-    
-    // Include leverage for IBKR and futures-capable exchanges (e.g., Bybit)
-    if (exchangeName === 'ibkr' || exchangeName === 'bybit') {
+    if (exchangeType === 'ibkr' || exchangeType === 'bybit') {
         const leverage = document.getElementById('exchangeLeverage').value;
         data.leverage = leverage ? parseInt(leverage) : 1;
     }
-
-    // Include trading_mode and proxy for Bybit (spot / futures)
-    if (exchangeName === 'bybit') {
+    if (exchangeType === 'bybit') {
         const tradingModeSelect = document.getElementById('exchangeTradingMode');
-        if (tradingModeSelect) {
-            data.trading_mode = tradingModeSelect.value || 'spot';
-        }
+        if (tradingModeSelect) data.trading_mode = tradingModeSelect.value || 'spot';
         const proxyEl = document.getElementById('exchangeProxy');
-        if (proxyEl) {
-            data.proxy = proxyEl.value.trim();
-        }
+        if (proxyEl) data.proxy = proxyEl.value.trim();
+    }
+    if (exchangeType === 'ibkr') {
+        if (exchange.account_id !== undefined) data.account_id = exchange.account_id || '';
+        if (exchange.use_paper !== undefined) data.use_paper = exchange.use_paper || false;
     }
 
-    // Include account_id and use_paper for IBKR
-    if (exchangeName === 'ibkr') {
-        if (exchange.account_id !== undefined) {
-            data.account_id = exchange.account_id || '';
-        }
-        if (exchange.use_paper !== undefined) {
-            data.use_paper = exchange.use_paper || false;
-        }
-    }
     
     // Don't send masked secret
     // Don't send '***' as the secret - it means "keep existing secret"
@@ -683,22 +970,37 @@ async function saveExchange() {
     }
     
     try {
-        const response = await fetch(`/api/exchanges/${exchangeName}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(data)
-        });
-        
-        const result = await response.json();
-        
-        if (result.status === 'success') {
-            showToast('Exchange configuration saved successfully', 'success');
-            closeModal();
-            loadDashboard();
+        let response, result;
+        if (parentAccountId) {
+            // Creating an exchange under a logical account
+            response = await fetch(`/api/accounts/${parentAccountId}/exchanges`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ type: exchangeType }, data))
+            });
+            result = await response.json();
+            if (response.ok && result.status === 'success') {
+                showToast('Exchange account created successfully', 'success');
+                closeModal();
+                await loadDashboard();
+                renderAccounts();
+            } else {
+                showToast(result.error || 'Failed to create exchange', 'error');
+            }
         } else {
-            showToast(result.error || 'Failed to save exchange', 'error');
+            response = await fetch(`/api/exchanges/${exchangeName}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            result = await response.json();
+            if (result.status === 'success') {
+                showToast('Exchange configuration saved successfully', 'success');
+                closeModal();
+                await loadDashboard();
+            } else {
+                showToast(result.error || 'Failed to save exchange', 'error');
+            }
         }
     } catch (error) {
         console.error('Error saving exchange:', error);
@@ -709,25 +1011,37 @@ async function saveExchange() {
 // Test connection
 async function testConnection() {
     const exchangeName = document.getElementById('exchangeName').value;
-    var apiKeyEl = document.getElementById('exchangeApiKey');
-    var apiSecretEl = document.getElementById('exchangeApiSecret');
-    var baseUrlEl = document.getElementById('exchangeBaseUrl');
-    const apiKey = (apiKeyEl && apiKeyEl.value ? apiKeyEl.value : '').trim();
-    const apiSecret = (apiSecretEl && apiSecretEl.value ? apiSecretEl.value : '').trim();
-    const baseUrl = (baseUrlEl && baseUrlEl.value ? baseUrlEl.value : '').trim();
-    
+    const parentAccountId = (document.getElementById('exchangeParentAccount') || {}).value || '';
+
+    // Determine effective exchange type (for API endpoint)
+    let exchangeType;
+    if (!exchangeName && parentAccountId) {
+        const typeEl = document.getElementById('newExchangeType');
+        exchangeType = typeEl ? typeEl.value : 'bybit';
+    } else {
+        const exchange = (config.exchanges || {})[exchangeName] || {};
+        exchangeType = (exchange.type || exchange.name || exchangeName).toLowerCase();
+    }
+
+    // Use exchangeName (may be a Mongo ID like bybit_1) for the API call so it can look up credentials
+    const testTarget = exchangeName || exchangeType;
+
+    const apiKey = (document.getElementById('exchangeApiKey').value || '').trim();
+    const apiSecret = (document.getElementById('exchangeApiSecret').value || '').trim();
+    const baseUrl = (document.getElementById('exchangeBaseUrl').value || '').trim();
+
     showToast('Testing connection...', 'success');
-    
+
     try {
         const body = {};
         if (apiKey) body.api_key = apiKey;
         if (apiSecret && apiSecret !== '***') body.api_secret = apiSecret;
         if (baseUrl) body.base_url = baseUrl;
-        if (exchangeName === 'ibkr') {
-            var levIbkr = document.getElementById('exchangeLeverage');
-            if (levIbkr) body.leverage = parseInt(levIbkr.value, 10) || 1;
+        if (exchangeType === 'ibkr') {
+            const levEl = document.getElementById('exchangeLeverage');
+            if (levEl) body.leverage = parseInt(levEl.value, 10) || 1;
         }
-        if (exchangeName === 'bybit') {
+        if (exchangeType === 'bybit') {
             const modeEl = document.getElementById('exchangeTradingMode');
             const levEl = document.getElementById('exchangeLeverage');
             const proxyEl = document.getElementById('exchangeProxy');
@@ -735,15 +1049,13 @@ async function testConnection() {
             if (levEl) body.leverage = parseInt(levEl.value) || 1;
             if (proxyEl && proxyEl.value.trim()) body.proxy = proxyEl.value.trim();
         }
-        
-        const response = await fetch(`/api/test-connection/${exchangeName}`, {
+
+        const response = await fetch(`/api/test-connection/${testTarget}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        
         const result = await response.json();
-        
         if (result.status === 'success') {
             showToast('Connection successful!', 'success');
         } else {
@@ -845,7 +1157,7 @@ async function updateSignalStatus() {
         const status = await response.json();
         
         // Update webhook connection status
-        const connectionDot = document.querySelector('#webhookConnectionIndicator .connection-dot');
+        const connectionDot = document.getElementById('connectionDot');
         const statusText = document.getElementById('webhookStatusText');
         const webhookStatus = document.getElementById('webhookStatus');
         const lastSignalTime = document.getElementById('lastSignalTime');
@@ -855,21 +1167,20 @@ async function updateSignalStatus() {
         const failedTrades = document.getElementById('failedTrades');
         
         if (status.webhook_status === 'connected') {
-            connectionDot.className = 'connection-dot connected';
+            connectionDot.className = 'dot on pulse';
             statusText.textContent = 'Connected';
             webhookStatus.textContent = 'Connected';
-            webhookStatus.className = 'status-value success';
+            webhookStatus.className = 'signal-stat-value ok';
         } else {
-            // Show "Waiting for signals" if no signals received yet (webhook is ready, just waiting)
-            connectionDot.className = 'connection-dot disconnected';
+            connectionDot.className = 'dot';
             if (status.total_signals === 0) {
                 statusText.textContent = 'Waiting for signals';
                 webhookStatus.textContent = 'Waiting for signals';
-                webhookStatus.className = 'status-value';
+                webhookStatus.className = 'signal-stat-value';
             } else {
                 statusText.textContent = 'Disconnected';
                 webhookStatus.textContent = 'Disconnected';
-                webhookStatus.className = 'status-value error';
+                webhookStatus.className = 'signal-stat-value err';
             }
         }
         
@@ -903,13 +1214,10 @@ async function updateSignalStatus() {
         
     } catch (error) {
         console.error('Error updating signal status:', error);
-        // Mark as disconnected on error
-        const connectionDot = document.querySelector('#webhookConnectionIndicator .connection-dot');
+        const connectionDot = document.getElementById('connectionDot');
         const statusText = document.getElementById('webhookStatusText');
-        if (connectionDot) {
-            connectionDot.className = 'connection-dot disconnected';
-            statusText.textContent = 'Disconnected';
-        }
+        if (connectionDot) connectionDot.className = 'dot';
+        if (statusText) statusText.textContent = 'Disconnected';
     }
 }
 
@@ -928,9 +1236,11 @@ function buildSignalWhatHappenedCell(signal) {
     var inner = '';
 
     if (signal.executed) {
-        inner = '<div class="signal-reason-category">Success</div>' +
-            '<div class="signal-reason-detail success">The bot placed the order on at least one connected exchange and reported success. Check your exchange for fills, positions, and balances.</div>';
-        return '<td class="signal-what-happened"><div class="signal-what-happened-inner">' + inner + '</div></td>';
+        inner = '<div class="signal-detail">' +
+            '<span class="cat">Success</span>' +
+            '<span class="msg ok">Order placed on exchange. Check your exchange for fills, positions, and balances.</span>' +
+            '</div>';
+        return '<td>' + inner + '</td>';
     }
 
     if (err) {
@@ -939,31 +1249,36 @@ function buildSignalWhatHappenedCell(signal) {
         var elower = err.toLowerCase();
         if (elower.indexOf('leverage') !== -1 && elower.indexOf('bybit') !== -1) {
             cat = 'Leverage blocked (Bybit)';
-            hint = '<div class="signal-reason-detail hint">Usually: API key missing futures permissions, wrong margin mode (cross/isolated), or symbol not allowed at that leverage. Fix on Bybit, then try again.</div>';
+            hint = '<span class="hint">Usually: API key missing futures permissions, wrong margin mode (cross/isolated), or symbol not allowed at that leverage. Fix on Bybit, then retry.</span>';
         } else if (elower.indexOf('no position') !== -1 || elower.indexOf('balance to sell') !== -1) {
             cat = 'Nothing to sell';
-            hint = '<div class="signal-reason-detail hint">There was no open position (or free balance) for this symbol on the exchange when the SELL ran—often after a failed BUY or if you already closed the trade.</div>';
+            hint = '<span class="hint">No open position or free balance for this symbol when SELL ran — often after a failed BUY or already-closed trade.</span>';
         } else if (elower.indexOf('executor') !== -1 || elower.indexOf('no trading executor') !== -1) {
             cat = 'Bot not ready';
-            hint = '<div class="signal-reason-detail hint">Enable the exchange, add API credentials or complete IBKR Gateway login, and ensure the symbol is in the allowed list.</div>';
-        } else if (elower.indexOf('not configured for any enabled') !== -1 || elower.indexOf('symbol') !== -1 && elower.indexOf('manage symbols') !== -1) {
+            hint = '<span class="hint">Enable the exchange, add API credentials or complete IBKR Gateway login, and ensure the symbol is in the allowed list.</span>';
+        } else if (elower.indexOf('not configured for any enabled') !== -1 || (elower.indexOf('symbol') !== -1 && elower.indexOf('manage symbols') !== -1)) {
             cat = 'Symbol not routed';
-            hint = '<div class="signal-reason-detail hint">Add this symbol to the exchange in Exchanges → Manage Symbols (or global Symbols &amp; Routing).</div>';
+            hint = '<span class="hint">Add this symbol in Exchanges → Manage Symbols (or Symbols &amp; Routing).</span>';
         } else if (elower.indexOf('validation failed') !== -1) {
             cat = 'Signal rejected';
-            hint = '<div class="signal-reason-detail hint">Payload missing fields or strategy blocked the trade. Check your TradingView alert JSON.</div>';
+            hint = '<span class="hint">Payload missing fields or strategy blocked the trade. Check your TradingView alert JSON.</span>';
         } else if (elower.indexOf('position size') !== -1 || elower.indexOf('balance') !== -1) {
             cat = 'Size or balance';
-            hint = '<div class="signal-reason-detail hint">Position size was zero or wallet balance is insufficient for the order.</div>';
+            hint = '<span class="hint">Position size was zero or wallet balance insufficient for the order.</span>';
         }
-        inner = '<div class="signal-reason-category">' + escapeHtmlSignal(cat) + '</div>' +
-            '<div class="signal-reason-detail error">' + escapeHtmlSignal(err) + '</div>' + hint;
-        return '<td class="signal-what-happened"><div class="signal-what-happened-inner">' + inner + '</div></td>';
+        inner = '<div class="signal-detail">' +
+            '<span class="cat">' + escapeHtmlSignal(cat) + '</span>' +
+            '<span class="msg err">' + escapeHtmlSignal(err) + '</span>' +
+            hint +
+            '</div>';
+        return '<td>' + inner + '</td>';
     }
 
-    inner = '<div class="signal-reason-category">Pending / unknown</div>' +
-        '<div class="signal-reason-detail muted">No error was stored for this row. It may still be processing, or the webhook only logged the signal. If status stays Pending, confirm the exchange is connected and this symbol is allowed.</div>';
-    return '<td class="signal-what-happened"><div class="signal-what-happened-inner">' + inner + '</div></td>';
+    inner = '<div class="signal-detail">' +
+        '<span class="cat">Pending / unknown</span>' +
+        '<span class="msg dim">No error stored. May still be processing. If status stays Pending, confirm exchange is connected and symbol is allowed.</span>' +
+        '</div>';
+    return '<td>' + inner + '</td>';
 }
 
 /** Raw list from API; filter/sort applied in renderRecentSignalsFromCache */
@@ -1064,35 +1379,41 @@ function sortRecentSignalsList(list, sortKey) {
 function buildRecentSignalRowHtml(signal) {
     var date = new Date(signal.datetime);
     var signalType = (signal.signal || '').toLowerCase();
-    var statusClass = signal.executed ? 'executed' : (signal.error ? 'failed' : 'pending');
+    var statusSigClass = signal.executed ? 'ok' : (signal.error ? 'fail' : 'skip');
     var statusText = signal.executed ? 'Executed' : (signal.error ? 'Failed' : 'Pending');
-    var priceStr = signal.price ? signal.price.toFixed(2) : '-';
-    var titleErr = (signal.error || '').replace(/"/g, '&quot;');
-    var statusHtml = '<span class="status-badge ' + statusClass + '"' + (titleErr ? ' title="' + titleErr + '"' : '') + '>' + statusText + '</span>';
+    var priceStr = signal.price ? signal.price.toFixed(2) : '—';
+    var statusHtml = '<span class="sig-badge ' + statusSigClass + '">' + statusText + '</span>';
     var whatCell = buildSignalWhatHappenedCell(signal);
-    return '<tr><td>' + date.toLocaleString() + '</td><td>' + (signal.symbol || '-') + '</td><td><span class="signal-badge ' + signalType + '">' + signal.signal + '</span></td><td>' + priceStr + '</td><td>' + statusHtml + '</td>' + whatCell + '</tr>';
+    return '<tr><td>' + date.toLocaleTimeString() + '<br><span style="font-size:10px;opacity:.6">' + date.toLocaleDateString() + '</span></td><td><strong>' + escapeHtmlSignal(signal.symbol || '—') + '</strong></td><td><span class="sig-badge ' + signalType + '">' + escapeHtmlSignal(signal.signal || '—') + '</span></td><td>' + priceStr + '</td><td>' + statusHtml + '</td>' + whatCell + '</tr>';
 }
 
 function renderRecentSignalsFromCache() {
     var f = readRecentSignalsFiltersFromSuffix('Overview');
 
-    var rowsHtml;
-    if (recentSignalsCache.length === 0) {
-        rowsHtml = '<tr><td colspan="6" class="no-signals">No signals received yet</td></tr>';
-    } else {
+    var rowsHtml = null;
+    var noSignals = recentSignalsCache.length === 0;
+
+    if (!noSignals) {
         var filtered = applyRecentSignalsFilters(recentSignalsCache, f);
         var sorted = sortRecentSignalsList(filtered, f.sort);
-        if (sorted.length === 0) {
-            rowsHtml = '<tr><td colspan="6" class="no-signals">No signals match your filters. Set Status to All or clear the symbol box.</td></tr>';
-        } else {
-            rowsHtml = sorted.map(buildRecentSignalRowHtml).join('');
-        }
+        if (sorted.length > 0) rowsHtml = sorted.map(buildRecentSignalRowHtml).join('');
     }
 
     var tbodyOverview = document.getElementById('signalsTableBody');
     var tbodyActivity = document.getElementById('activitySignalsTableBody');
-    if (tbodyOverview) tbodyOverview.innerHTML = rowsHtml;
-    if (tbodyActivity) tbodyActivity.innerHTML = rowsHtml;
+
+    if (tbodyOverview) {
+        tbodyOverview.innerHTML = rowsHtml ||
+            (noSignals
+                ? '<tr><td colspan="6" class="no-signals">No signals received yet</td></tr>'
+                : '<tr><td colspan="6" class="no-signals">No signals match your filters.</td></tr>');
+    }
+    if (tbodyActivity) {
+        tbodyActivity.innerHTML = rowsHtml ||
+            (noSignals
+                ? '<tr><td colspan="6" class="no-data">No signals received yet</td></tr>'
+                : '<tr><td colspan="6" class="no-data">No signals match your filters.</td></tr>');
+    }
 }
 
 function initRecentSignalsToolbar() {
@@ -1130,6 +1451,8 @@ async function updateRecentSignals() {
         const response = await fetch('/api/signals/recent?limit=100&hours=24');
         const data = await response.json();
         recentSignalsCache = data.signals || [];
+        const el = document.getElementById('statSignals24h');
+        if (el) el.textContent = recentSignalsCache.length;
         initRecentSignalsToolbar();
         renderRecentSignalsFromCache();
     } catch (error) {
@@ -1161,17 +1484,10 @@ window.onclick = function(event) {
 let currentSymbolsExchange = null;
 
 function showMainSections(show) {
-    const main = document.querySelector('.dashboard-main');
-    if (!main) return;
-    const sections = main.querySelectorAll('.dashboard-section');
-    sections.forEach(section => {
-        // Keep symbols section control separate
-        if (section.id === 'exchangeSymbolsSection') {
-            section.style.display = show ? 'none' : 'block';
-        } else {
-            section.style.display = show ? '' : 'none';
-        }
-    });
+    const overview = document.getElementById('exchangesOverviewSection');
+    const symbols = document.getElementById('exchangeSymbolsSection');
+    if (overview) overview.style.display = show ? '' : 'none';
+    if (symbols) symbols.style.display = show ? 'none' : 'block';
 }
 
 async function openSymbolsManager(exchangeName) {
@@ -1258,10 +1574,10 @@ function renderExchangeSymbols() {
     tbody.innerHTML = symbols.map(sym => {
         return `
             <tr>
-                <td>${sym}</td>
-                <td><span class="status-badge executed">Active</span></td>
+                <td><span class="symbol-badge">${escapeHtml(sym)}</span></td>
+                <td><span class="badge badge-success">Active</span></td>
                 <td>
-                    <button class="btn btn-sm" onclick="removeSymbolFromExchange('${sym}')">
+                    <button class="btn btn-sm btn-danger" onclick="removeSymbolFromExchange('${escapeHtml(sym)}')">
                         <i class="fas fa-trash"></i> Remove
                     </button>
                 </td>
@@ -1351,7 +1667,7 @@ async function searchMarketSymbols(query) {
     try {
         const resp = await fetch(`/api/exchanges/${currentSymbolsExchange}/market-symbols?q=${encodeURIComponent(query)}`);
         if (!resp.ok) {
-            dropdown.innerHTML = '<div class="symbol-search-dropdown-empty">Unable to load symbols</div>';
+            dropdown.innerHTML = '<div class="symbol-dropdown-empty">Unable to load symbols</div>';
             dropdown.style.display = 'block';
             return;
         }
@@ -1359,22 +1675,22 @@ async function searchMarketSymbols(query) {
         const symbols = Array.isArray(data.symbols) ? data.symbols : [];
 
         if (symbols.length === 0) {
-            dropdown.innerHTML = '<div class="symbol-search-dropdown-empty">No matching symbols found</div>';
+            dropdown.innerHTML = '<div class="symbol-dropdown-empty">No matching symbols found</div>';
         } else {
             dropdown.innerHTML = symbols.map(sym => {
                 const s = String(sym || '');
                 const attrEscaped = s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                 const textEscaped = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                return `<div class="symbol-search-dropdown-item" data-symbol="${attrEscaped}">${textEscaped}</div>`;
+                return `<div class="symbol-dropdown-item" data-symbol="${attrEscaped}">${textEscaped}</div>`;
             }).join('');
-            dropdown.querySelectorAll('.symbol-search-dropdown-item').forEach(el => {
+            dropdown.querySelectorAll('.symbol-dropdown-item').forEach(el => {
                 el.addEventListener('click', () => selectSymbolFromSearch(el.dataset.symbol || ''));
             });
         }
         dropdown.style.display = 'block';
     } catch (e) {
         console.error('Symbol search error:', e);
-        dropdown.innerHTML = '<div class="symbol-search-dropdown-empty">Error loading symbols</div>';
+        dropdown.innerHTML = '<div class="symbol-dropdown-empty">Error loading symbols</div>';
         dropdown.style.display = 'block';
     }
 }
@@ -1436,39 +1752,48 @@ function renderSymbolsRouting() {
     const rows = [];
 
     for (const [name, exchange] of Object.entries(config.exchanges)) {
+        const type = (exchange.type || exchange.name || name).toLowerCase();
+        const abbr = _getExchangeTypeAbbr(type);
         const isPaper = exchange.paper_trading === true;
         const isTestnet = exchange.testnet === true;
-        let envText = '';
-        if (isPaper) envText = 'Paper';
-        else if (isTestnet) envText = 'Testnet';
-        else envText = 'Live';
+        const envText = isPaper ? 'Paper' : isTestnet ? 'Testnet' : 'Live';
 
         const symbols = Array.isArray(exchange.symbols) ? exchange.symbols : [];
         if (symbols.length === 0) {
-            rows.push(`
-                <tr>
-                    <td>${exchange.name}</td>
-                    <td>${envText}</td>
-                    <td style="color: var(--text-muted); font-style: italic;">None configured</td>
-                </tr>
-            `);
+            rows.push(`<tr>
+                <td>${escapeHtml(exchange.name || name)}</td>
+                <td><span class="badge badge-${type}">${abbr}</span></td>
+                <td>${envText}</td>
+                <td style="color:var(--text-muted); font-style:italic;">None configured</td>
+            </tr>`);
         } else {
             symbols.forEach((sym, idx) => {
-                rows.push(`
-                    <tr>
-                        <td>${idx === 0 ? exchange.name : ''}</td>
-                        <td>${idx === 0 ? envText : ''}</td>
-                        <td>${sym}</td>
-                    </tr>
-                `);
+                rows.push(`<tr>
+                    <td>${idx === 0 ? escapeHtml(exchange.name || name) : ''}</td>
+                    <td>${idx === 0 ? `<span class="badge badge-${type}">${abbr}</span>` : ''}</td>
+                    <td>${idx === 0 ? envText : ''}</td>
+                    <td><span class="symbol-badge">${escapeHtml(sym)}</span></td>
+                </tr>`);
             });
         }
     }
 
     if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="3" class="no-signals">No symbols configured yet</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="4" class="no-data">No symbols configured yet</td></tr>';
     } else {
         tbody.innerHTML = rows.join('');
     }
+}
+
+// Update overview stat cards
+function renderOverviewStats() {
+    const accounts = window.AppState.accounts || [];
+    const exchanges = config.exchanges || {};
+    const total = Object.keys(exchanges).length;
+    const enabled = Object.values(exchanges).filter(e => e.enabled !== false).length;
+    const el = id => document.getElementById(id);
+    if (el('statAccounts')) el('statAccounts').textContent = accounts.length;
+    if (el('statExchanges')) el('statExchanges').textContent = total;
+    if (el('statEnabled')) el('statEnabled').textContent = enabled;
 }
 

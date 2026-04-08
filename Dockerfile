@@ -1,15 +1,16 @@
-FROM python:3.10-slim
+FROM python:3.12-slim
 
+ENV PYTHONUNBUFFERED=1
 WORKDIR /app
 
-# Copy requirements file first
-COPY requirements.txt .
-
+# Install dependencies
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the project
+# Copy application
 COPY . .
 
 EXPOSE 8080
 
-CMD ["python", "main_with_dashboard.py"]
+# Run with Gunicorn (WSGI). Use environment variables to configure port and DB.
+CMD ["gunicorn", "-w", "4", "-b", "0.0.0.0:8080", "wsgi:app"]
