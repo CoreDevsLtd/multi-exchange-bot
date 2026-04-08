@@ -203,6 +203,7 @@ async function renderAccounts() {
                         </div>
                         <div style="display:flex; gap:8px; align-items:center">
                             <button class="btn btn-sm" onclick="viewAccountExchanges('${ac._id}')">View Exchanges</button>
+                            <button class="btn btn-sm" onclick="openAccountModal('${ac._id}')">Edit</button>
                             <button class="btn btn-sm" onclick="toggleAccountEnabled('${ac._id}', ${ac.enabled ? 'false' : 'true'})">${ac.enabled ? 'Disable' : 'Enable'}</button>
                         </div>
                     </div>
@@ -261,6 +262,11 @@ function openAccountModal(account) {
     const idEl = document.getElementById('accountId');
     const nameEl = document.getElementById('accountName');
     const enabledEl = document.getElementById('accountEnabled');
+
+    // Accept either account object or account id string
+    if (typeof account === 'string') {
+        account = (window.AppState && window.AppState.accounts) ? window.AppState.accounts.find(a => a._id === account) : null;
+    }
 
     if (account) {
         idEl.value = account._id || '';
