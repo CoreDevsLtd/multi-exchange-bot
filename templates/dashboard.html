@@ -576,6 +576,35 @@
         </div>
     </div>
 
+    <!-- Account Modal -->
+    <div id="accountModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="accountModalTitle">Account</h3>
+                <span class="close" onclick="closeAccountModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="accountForm">
+                    <input type="hidden" id="accountId">
+                    <div class="form-group">
+                        <label>Account Name</label>
+                        <input type="text" id="accountName" placeholder="e.g. Main Account">
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="accountEnabled" checked>
+                            Enabled
+                        </label>
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-primary" onclick="saveAccount()"><i class="fas fa-save"></i> Save</button>
+                        <button type="button" class="btn btn-secondary" onclick="closeAccountModal()">Cancel</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 

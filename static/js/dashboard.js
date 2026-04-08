@@ -251,12 +251,60 @@ async function toggleAccountEnabled(accountId, enabled) {
 }
 
 async function createAccountPrompt() {
-    const name = prompt('Enter account name:');
-    if (!name) return;
+    // Open account modal for creation
+    openAccountModal();
+}
+
+// Open Account modal for create or edit
+function openAccountModal(account) {
+    const modal = document.getElementById('accountModal');
+    const idEl = document.getElementById('accountId');
+    const nameEl = document.getElementById('accountName');
+    const enabledEl = document.getElementById('accountEnabled');
+
+    if (account) {
+        idEl.value = account._id || '';
+        nameEl.value = account.name || account._id || '';
+        enabledEl.checked = account.enabled !== false;
+        document.getElementById('accountModalTitle').textContent = 'Edit Account';
+    } else {
+        idEl.value = '';
+        nameEl.value = '';
+        enabledEl.checked = true;
+        document.getElementById('accountModalTitle').textContent = 'Create Account';
+    }
+
+    modal.classList.add('show');
+}
+
+function closeAccountModal() {
+    const modal = document.getElementById('accountModal');
+    modal.classList.remove('show');
+}
+
+async function saveAccount() {
+    const id = document.getElementById('accountId').value.trim();
+    const name = document.getElementById('accountName').value.trim();
+    const enabled = document.getElementById('accountEnabled').checked;
+    if (!name) { showToast('Please enter a name for the account', 'error'); return; }
     try {
-        const resp = await fetch('/api/accounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ name }) });
-        if (resp.ok) renderAccounts();
-    } catch (e) { console.error(e); }
+        const body = { name, enabled };
+        if (id) body._id = id;
+        const resp = await fetch('/api/accounts', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(body) });
+        const result = await resp.json();
+        if (resp.ok && result.status === 'success') {
+            showToast('Account saved', 'success');
+            closeAccountModal();
+            renderAccounts();
+            // reload exchanges in case new account created
+            await loadDashboard();
+        } else {
+            showToast(result.error || 'Failed to save account', 'error');
+        }
+    } catch (e) {
+        console.error('Error saving account', e);
+        showToast('Error saving account', 'error');
+    }
 }
 
 // Refresh Symbols & Routing with latest data from server
