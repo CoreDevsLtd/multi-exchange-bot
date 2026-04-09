@@ -19,6 +19,6 @@ pymongo==4.5.0
 cryptography==41.0.3
 
 # Interactive Brokers integration
-ib-insync==0.9.88
+ib-insync==0.9.86
 nest-asyncio==1.5.8
 
