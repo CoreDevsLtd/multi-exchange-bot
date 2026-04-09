@@ -285,6 +285,9 @@ class Dashboard:
                         'proxy': e.get('proxy', ''),
                         'symbol': e.get('symbol'),
                         'account_id': e.get('account_id'),
+                        'gateway_host': e.get('gateway_host', '127.0.0.1'),
+                        'gateway_port': e.get('gateway_port', 7497),
+                        'client_id': e.get('client_id', 1),
                     }
                 return jsonify(mapped)
             except Exception as ex:
@@ -318,6 +321,9 @@ class Dashboard:
                     'symbol': doc.get('symbol'),
                     'account_id': doc.get('account_id'),
                     'type': doc.get('type', exchange_name),
+                    'gateway_host': doc.get('gateway_host', '127.0.0.1'),
+                    'gateway_port': doc.get('gateway_port', 7497),
+                    'client_id': doc.get('client_id', 1),
                 }
                 return jsonify(exchange_config)
             except Exception as ex:
@@ -376,6 +382,19 @@ class Dashboard:
                         update['symbol'] = symbol.strip().upper()
                     elif symbol is None or symbol == '':
                         update['symbol'] = None
+                # IBKR Gateway connection settings
+                if 'gateway_host' in data:
+                    update['gateway_host'] = data['gateway_host'].strip() if data['gateway_host'] else '127.0.0.1'
+                if 'gateway_port' in data:
+                    try:
+                        update['gateway_port'] = int(data['gateway_port'])
+                    except (ValueError, TypeError):
+                        update['gateway_port'] = 7497
+                if 'client_id' in data:
+                    try:
+                        update['client_id'] = int(data['client_id'])
+                    except (ValueError, TypeError):
+                        update['client_id'] = 1
                 if update:
                     db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
                     return jsonify({'status': 'success', 'message': 'Exchange updated in DB'})
@@ -664,6 +683,9 @@ class Dashboard:
                     'base_url': data.get('base_url') or '',
                     'proxy': data.get('proxy', ''),
                     'use_paper': bool(data.get('use_paper', False)),
+                    'gateway_host': (data.get('gateway_host') or '127.0.0.1').strip(),
+                    'gateway_port': int(data.get('gateway_port') or 7497),
+                    'client_id': int(data.get('client_id') or 1),
                 }
                 db = get_db()
                 db.exchange_accounts.update_one({'_id': ex_id}, {'$set': doc}, upsert=True)

@@ -670,7 +670,7 @@ const ExchangeModal = {
       if (this.isBybit)  { p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
       if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
       if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
-      if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = this.form.gateway_port; p.client_id = this.form.client_id; }
+      if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = parseInt(this.form.gateway_port); p.client_id = parseInt(this.form.client_id); }
       return p;
     },
     async onSymbolSearch() {
