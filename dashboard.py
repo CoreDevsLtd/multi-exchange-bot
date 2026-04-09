@@ -366,6 +366,9 @@ class Dashboard:
             try:
                 from mongo_db import get_db
                 db = get_db()
+                # Fetch existing document to get exchange type
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+                exchange_type = (doc.get('type') or '').lower() if doc else ''
                 update = {}
                 if 'enabled' in data:
                     update['enabled'] = bool(data['enabled'])

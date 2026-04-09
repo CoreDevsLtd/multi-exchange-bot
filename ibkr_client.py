@@ -16,16 +16,18 @@ class IBKRClient:
     Each account uses a separate ibeam container on a different port.
     """
 
-    def __init__(self, host='127.0.0.1', port=7497):
+    def __init__(self, host='127.0.0.1', port=7497, client_id=1):
         """
         Initialize IBKR client
 
         Args:
             host: ibeam/Gateway host (127.0.0.1 for local, VPS IP for remote)
             port: ibeam/Gateway port (7497 for paper, 7496 for live, or custom per container)
+            client_id: Client ID for the connection (default: 1)
         """
         self.host = host
         self.port = port
+        self.client_id = client_id
         self.ib = None
         self.account = None
 
