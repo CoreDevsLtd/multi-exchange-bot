@@ -80,8 +80,9 @@ class Dashboard:
                 return self._fetch_alpaca_symbols(exchange, query, limit)
             if exchange_name == 'ibkr':
                 return []  # IBKR requires Gateway; no simple public symbol list
+            logger.warning(f"Unknown exchange type: {exchange_name}")
         except Exception as e:
-            logger.warning(f"Error fetching market symbols for {exchange_name}: {e}")
+            logger.error(f"Error fetching market symbols for {exchange_name}: {e}", exc_info=True)
         return []
 
     def _fetch_bybit_symbols(self, exchange: dict, query: str, limit: int) -> list:
@@ -98,16 +99,20 @@ class Dashboard:
         if category == 'spot':
             resp = requests.get(url, params={'category': category}, timeout=10)
             if resp.status_code != 200:
+                logger.warning(f"Bybit market API returned {resp.status_code}: {resp.text[:200]}")
                 return []
             data = resp.json()
             if data.get('retCode') != 0:
+                logger.warning(f"Bybit API error: {data.get('retMsg', 'unknown error')}")
                 return []
             items = data.get('result', {}).get('list', [])
+            logger.debug(f"Bybit API returned {len(items)} total symbols (spot category)")
             for item in items:
                 sym = item.get('symbol', '')
                 if sym and item.get('status') == 'Trading' and sym not in seen:
                     symbols.append(sym)
                     seen.add(sym)
+            logger.debug(f"Filtered to {len(symbols)} trading symbols, query='{query}'")
             return self._filter_symbols(symbols, query, limit)
 
         # Linear/Inverse/Option can exceed 500 symbols; paginate to avoid missing pairs.
@@ -452,8 +457,13 @@ class Dashboard:
                 db = get_db()
                 doc = db.exchange_accounts.find_one({'_id': exchange_name})
                 if not doc:
+                    logger.warning(f"Exchange account not found in MongoDB: {exchange_name}")
                     return jsonify({'error': 'Exchange not found'}), 404
-                ex_type = doc.get('type', '')
+                ex_type = doc.get('type', '').lower()
+                logger.debug(f"search_market_symbols: exchange={exchange_name}, type={ex_type}, query={query}")
+                if not ex_type:
+                    logger.warning(f"Exchange {exchange_name} has no 'type' field")
+                    return jsonify({'error': 'Exchange type not configured'}), 400
                 exchange = {
                     'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url', ''),
                     'testnet': doc.get('testnet', False),
@@ -461,9 +471,10 @@ class Dashboard:
                     'api_key': '', 'api_secret': '',
                 }
                 symbols = self._fetch_market_symbols(ex_type, exchange, query)
+                logger.debug(f"market-symbols returned {len(symbols)} results for {ex_type}")
                 return jsonify({'symbols': symbols})
             except Exception as e:
-                logger.warning(f"market-symbols lookup failed: {e}")
+                logger.error(f"market-symbols lookup failed: {e}", exc_info=True)
                 return jsonify({'error': 'Failed to fetch symbols'}), 500
 
         @self.app.route('/api/exchanges/<exchange_name>/symbols', methods=['GET', 'POST'])
