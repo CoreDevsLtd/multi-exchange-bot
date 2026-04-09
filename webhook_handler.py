@@ -104,7 +104,19 @@ class WebhookHandler:
             self.signal_monitor.ping_webhook()
             from flask import jsonify
             return jsonify({'status': 'healthy'}), 200
-    
+
+    def _log_webhook(self, log_doc: dict):
+        """Log webhook to MongoDB for audit trail (30-day retention via TTL)"""
+        try:
+            from mongo_db import get_db
+            from datetime import datetime
+            db = get_db()
+            log_doc['timestamp'] = log_doc.get('timestamp') or datetime.utcnow()
+            db.webhook_logs.insert_one(log_doc)
+        except Exception as e:
+            # Log failures should never break webhook processing
+            logger.warning(f"Failed to log webhook to MongoDB: {e}")
+
     def _handle_webhook(self):
         """Handle webhook request (extracted for reuse)"""
         from flask import request, jsonify
@@ -131,6 +143,14 @@ class WebhookHandler:
             
             if not signal_data:
                 error_msg = 'Invalid signal data'
+                self._log_webhook({
+                    'raw_payload': data or {},
+                    'signal': data.get('signal') if data else None,
+                    'symbol': data.get('symbol') if data else None,
+                    'status': 'error',
+                    'failure_reason': error_msg,
+                    'matched_exchanges': []
+                })
                 self.signal_monitor.add_signal(data if data else {}, executed=False, error=error_msg)
                 return jsonify({'status': 'error', 'message': error_msg}), 400
             
@@ -161,6 +181,14 @@ class WebhookHandler:
                 if not executors_to_use:
                     msg = f"Symbol {symbol} not configured for any enabled exchange. Add it in Exchanges → Manage Symbols."
                     logger.info(f"ℹ️  {msg}")
+                    self._log_webhook({
+                        'raw_payload': data or {},
+                        'signal': signal_data.get('signal'),
+                        'symbol': symbol,
+                        'status': 'skipped',
+                        'failure_reason': msg,
+                        'matched_exchanges': []
+                    })
                     self.signal_monitor.add_signal(signal_data, executed=False, error=msg)
                     return jsonify({'status': 'skipped', 'message': msg, 'symbol': symbol}), 200
                 
@@ -200,7 +228,27 @@ class WebhookHandler:
                             first_error = err
 
                 logger.info(f"Execution summary: symbol={symbol_norm or symbol}, selected_exchanges={len(executors_to_use)}, success={any_success}")
-                
+
+                # Build executions array from results
+                executions = []
+                for r in results:
+                    executions.append({
+                        'exchange_id': r.get('exchange'),
+                        'success': r.get('success', False),
+                        'order_id': r.get('order', {}).get('order_id') if r.get('order') else None,
+                        'error': r.get('error')
+                    })
+
+                self._log_webhook({
+                    'raw_payload': data or {},
+                    'signal': signal_data.get('signal'),
+                    'symbol': symbol,
+                    'status': 'success' if any_success else 'failed',
+                    'matched_exchanges': [ex for ex, _ in executors_to_use],
+                    'executions': executions,
+                    'error': None if any_success else first_error,
+                    'failure_reason': None if any_success else f"Execution failed: {first_error}"
+                })
                 self.signal_monitor.add_signal(signal_data, executed=any_success, error=first_error if not any_success else None)
                 return jsonify({
                     'status': 'success' if any_success else 'error',
@@ -221,6 +269,18 @@ class WebhookHandler:
                     
                     trade = demo.simulate_trade(symbol, side, price, quantity)
                     logger.info(f"🎮 Demo trade simulated: {trade}")
+                    self._log_webhook({
+                        'raw_payload': data or {},
+                        'signal': signal_data.get('signal'),
+                        'symbol': signal_data.get('symbol'),
+                        'status': 'success',
+                        'matched_exchanges': ['demo'],
+                        'executions': [{
+                            'exchange_id': 'demo',
+                            'success': True,
+                            'order_id': trade.get('id') if isinstance(trade, dict) else None
+                        }]
+                    })
                     self.signal_monitor.add_signal(signal_data, executed=True)
                     return jsonify({
                         'status': 'success',
@@ -232,6 +292,14 @@ class WebhookHandler:
                 # No executor and demo mode not active: Still accept and log the signal
                 # This allows testing webhook connectivity even without trading setup
                 logger.info(f"📥 Signal received (no executor): {signal_data.get('symbol')} {signal_data.get('signal')} @ {signal_data.get('price', {}).get('close', 'N/A') if isinstance(signal_data.get('price'), dict) else signal_data.get('price', 'N/A')}")
+                self._log_webhook({
+                    'raw_payload': data or {},
+                    'signal': signal_data.get('signal'),
+                    'symbol': signal_data.get('symbol'),
+                    'status': 'skipped',
+                    'failure_reason': 'No trading executor configured',
+                    'matched_exchanges': []
+                })
                 self.signal_monitor.add_signal(signal_data, executed=False, error='No trading executor configured')
                 return jsonify({
                     'status': 'received',
@@ -242,6 +310,18 @@ class WebhookHandler:
                 
         except Exception as e:
             logger.error(f"Webhook error: {e}", exc_info=True)
+            # Log unexpected error to webhook_logs
+            try:
+                self._log_webhook({
+                    'raw_payload': data if 'data' in locals() else {},
+                    'signal': None,
+                    'symbol': None,
+                    'status': 'error',
+                    'failure_reason': str(e),
+                    'matched_exchanges': []
+                })
+            except Exception as log_err:
+                logger.warning(f"Failed to log webhook error: {log_err}")
             from flask import jsonify
             return jsonify({'status': 'error', 'message': str(e)}), 500
     

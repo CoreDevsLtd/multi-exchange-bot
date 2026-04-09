@@ -164,7 +164,10 @@ def get_trades(filters: Dict = None, limit: int = 100, skip: int = 0) -> List[Di
 
 
 def ensure_indexes():
+    """Ensure all database indexes exist for performance and data lifecycle"""
     db = get_db()
     db.trades.create_index([('exchange_account_id', 1), ('symbol', 1)])
     db.trades.create_index([('account_id', 1), ('timestamp_open', -1)])
     db.exchange_accounts.create_index('account_id')
+    # TTL index: auto-delete webhook logs after 30 days (2592000 seconds)
+    db.webhook_logs.create_index('timestamp', expireAfterSeconds=2592000)

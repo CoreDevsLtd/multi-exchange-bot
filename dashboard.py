@@ -25,6 +25,13 @@ class Dashboard:
         # Load trading settings from MongoDB central_risk_management
         self.config = self._load_config_from_mongo()
 
+        # Ensure MongoDB indexes
+        try:
+            from mongo_db import ensure_indexes
+            ensure_indexes()
+        except Exception as e:
+            logger.warning(f"Could not ensure MongoDB indexes: {e}")
+
         # Initialize demo mode (opt-in via DEMO_MODE=true env var)
         from demo_mode import DemoMode
         self.demo_mode = DemoMode()
@@ -961,6 +968,36 @@ class Dashboard:
             
             # Fallback if signal_monitor not available
             return jsonify({'signals': []}), 200
+
+        @self.app.route('/api/webhook-logs', methods=['GET'])
+        def get_webhook_logs():
+            """Get webhook audit logs with filtering"""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                limit = request.args.get('limit', 100, type=int)
+                status = request.args.get('status')  # filter: success/failed/skipped/error
+                symbol = request.args.get('symbol')  # filter by symbol
+
+                query = {}
+                if status:
+                    query['status'] = status
+                if symbol:
+                    query['symbol'] = {'$regex': symbol, '$options': 'i'}
+
+                logs = list(db.webhook_logs.find(query).sort('timestamp', -1).limit(limit))
+
+                # Convert ObjectId and datetime to JSON-safe strings
+                for log in logs:
+                    log['_id'] = str(log['_id']) if log.get('_id') else None
+                    if log.get('timestamp'):
+                        log['timestamp'] = log['timestamp'].isoformat()
+
+                return jsonify({'logs': logs}), 200
+            except Exception as e:
+                logger.error(f"Error fetching webhook logs: {e}")
+                return jsonify({'error': 'Failed to fetch webhook logs'}), 500
 
         @self.app.route('/api/ibkr/setup', methods=['POST'])
         def ibkr_setup():

@@ -42,6 +42,7 @@ const store = reactive({
   settings:     {},
   risk:         {},
   signals:      [],
+  webhookLogs:  [],
   status:       {},
   demoMode:     false,
   demoStats:    {},
@@ -247,6 +248,14 @@ const api = {
   async loadSignals() {
     const d = await api.get('/api/signals/recent?limit=100&hours=24').catch(() => null);
     if (d) store.signals = d.signals ?? [];
+  },
+
+  async loadWebhookLogs(limit = 100, status = '', symbol = '') {
+    const params = new URLSearchParams({ limit });
+    if (status) params.set('status', status);
+    if (symbol) params.set('symbol', symbol);
+    const d = await api.get(`/api/webhook-logs?${params}`).catch(() => null);
+    if (d?.logs) store.webhookLogs = d.logs;
   },
 
   async loadStatus() {
@@ -1328,19 +1337,41 @@ const ActivityPage = {
   }),
   computed: {
     filtered() {
-      let list = store.signals.slice();
-      if (this.filterStatus === 'executed') list = list.filter(s => s.executed);
-      if (this.filterStatus === 'failed')   list = list.filter(s => !s.executed && s.error);
-      if (this.filterStatus === 'pending')  list = list.filter(s => !s.executed && !s.error);
-      if (this.filterSignal !== 'all')      list = list.filter(s => (s.signal ?? '').toUpperCase() === this.filterSignal);
+      let list = store.webhookLogs.slice();
+      if (this.filterStatus !== 'all') list = list.filter(log => log.status === this.filterStatus);
+      if (this.filterSignal !== 'all') list = list.filter(log => (log.signal ?? '').toLowerCase() === this.filterSignal.toLowerCase());
       if (this.filterSymbol) {
         const q = this.filterSymbol.toUpperCase();
-        list = list.filter(s => (s.symbol ?? '').toUpperCase().includes(q));
+        list = list.filter(log => (log.symbol ?? '').toUpperCase().includes(q));
       }
       list.sort((a, b) => this.sortDesc
-        ? (b.timestamp ?? 0) - (a.timestamp ?? 0)
-        : (a.timestamp ?? 0) - (b.timestamp ?? 0));
+        ? new Date(b.timestamp ?? 0) - new Date(a.timestamp ?? 0)
+        : new Date(a.timestamp ?? 0) - new Date(b.timestamp ?? 0));
       return list;
+    },
+  },
+  methods: {
+    statusBadgeClass(status) {
+      switch(status) {
+        case 'success': return 'ok';
+        case 'failed':  return 'fail';
+        case 'skipped': return 'warn';
+        case 'error':   return 'fail';
+        default:        return 'skip';
+      }
+    },
+    getStatusLabel(status) {
+      return (status ?? '—').charAt(0).toUpperCase() + (status ?? '—').slice(1);
+    },
+    getDetail(log) {
+      if (log.error) return log.error;
+      if (log.failure_reason) return log.failure_reason;
+      if (log.executions && log.executions.length > 0) {
+        const exec = log.executions[0];
+        if (exec.error) return exec.error;
+        if (exec.order_id) return `Order: ${exec.order_id}`;
+      }
+      return '—';
     },
   },
   template: `
@@ -1351,57 +1382,57 @@ const ActivityPage = {
           <label>Status</label>
           <select v-model="filterStatus">
             <option value="all">All</option>
-            <option value="executed">Executed</option>
+            <option value="success">Success</option>
             <option value="failed">Failed</option>
-            <option value="pending">Pending</option>
+            <option value="skipped">Skipped</option>
+            <option value="error">Error</option>
           </select>
         </div>
         <div class="filter-field">
           <label>Signal</label>
           <select v-model="filterSignal">
             <option value="all">All</option>
-            <option value="BUY">BUY</option>
-            <option value="SELL">SELL</option>
+            <option value="buy">Buy</option>
+            <option value="sell">Sell</option>
+            <option value="close">Close</option>
           </select>
         </div>
         <div class="filter-field filter-field--grow">
           <label>Symbol</label>
           <input v-model="filterSymbol" type="text" placeholder="Filter symbol…">
         </div>
-        <div class="filter-field">
-          <label>Sort</label>
-          <select v-model="sortDesc">
-            <option :value="true">Newest first</option>
-            <option :value="false">Oldest first</option>
-          </select>
-        </div>
       </div>
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Price</th><th>Status</th><th>Detail</th></tr>
+            <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Status</th><th>Matched Exchanges</th><th>Detail</th></tr>
           </thead>
           <tbody>
             <tr v-if="!filtered.length">
-              <td colspan="6" class="td-empty">No signals match your filters</td>
+              <td colspan="6" class="td-empty">No webhook logs match your filters</td>
             </tr>
-            <tr v-for="sig in filtered" :key="sig.id ?? sig.timestamp">
+            <tr v-for="log in filtered" :key="log._id ?? log.timestamp">
               <td class="td-time">
-                {{ new Date(sig.datetime ?? sig.timestamp).toLocaleTimeString() }}
-                <br><span class="td-date">{{ new Date(sig.datetime ?? sig.timestamp).toLocaleDateString() }}</span>
+                {{ new Date(log.timestamp).toLocaleTimeString() }}
+                <br><span class="td-date">{{ new Date(log.timestamp).toLocaleDateString() }}</span>
               </td>
-              <td><strong>{{ sig.symbol || '—' }}</strong></td>
-              <td><span :class="['sig-badge', (sig.signal || '').toLowerCase()]">{{ sig.signal || '—' }}</span></td>
-              <td style="font-family:var(--mono);font-size:11px">{{ sig.price ? sig.price.toFixed(2) : '—' }}</td>
+              <td><strong>{{ log.symbol || '—' }}</strong></td>
+              <td><span :class="['sig-badge', (log.signal || '').toLowerCase()]">{{ (log.signal || '—').toUpperCase() }}</span></td>
               <td>
-                <span :class="['sig-badge', sig.executed ? 'ok' : sig.error ? 'fail' : 'skip']">
-                  {{ sig.executed ? 'Executed' : sig.error ? 'Failed' : 'Pending' }}
+                <span :class="['sig-badge', statusBadgeClass(log.status)]">
+                  {{ getStatusLabel(log.status) }}
                 </span>
               </td>
+              <td style="font-size:12px">
+                <span v-if="log.matched_exchanges && log.matched_exchanges.length" class="text-muted">
+                  {{ log.matched_exchanges.join(', ') }}
+                </span>
+                <span v-else class="text-muted">—</span>
+              </td>
               <td class="td-detail">
-                <span v-if="sig.executed" class="clr-success">Order placed.</span>
-                <span v-else-if="sig.error" class="clr-error">{{ sig.error }}</span>
-                <span v-else class="text-muted">Pending…</span>
+                <span :class="log.status === 'success' ? 'clr-success' : log.status === 'failed' || log.status === 'error' ? 'clr-error' : ''">
+                  {{ getDetail(log) }}
+                </span>
               </td>
             </tr>
           </tbody>
@@ -1519,6 +1550,7 @@ const App = {
       api.loadAccounts(),
       api.loadSettings(),
       api.loadSignals(),
+      api.loadWebhookLogs(),
       api.loadStatus(),
       api.loadExStatus(),
     ]);
@@ -1535,10 +1567,11 @@ const App = {
 
     /* Polling — stored so we can clear them on unmount */
     this._intervals = [
-      setInterval(() => api.loadSignals(),  10_000),
-      setInterval(() => api.loadStatus(),   10_000),
-      setInterval(() => api.loadExStatus(), 30_000),
-      setInterval(() => api.loadDemoData(), 10_000),
+      setInterval(() => api.loadSignals(),     10_000),
+      setInterval(() => api.loadWebhookLogs(), 15_000),
+      setInterval(() => api.loadStatus(),      10_000),
+      setInterval(() => api.loadExStatus(),    30_000),
+      setInterval(() => api.loadDemoData(),    10_000),
     ];
   },
 
