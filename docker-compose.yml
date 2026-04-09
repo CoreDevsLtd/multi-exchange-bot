@@ -10,4 +10,5 @@ services:
       - .env
     volumes:
       - ./:/app:rw
+      - /var/run/docker.sock:/var/run/docker.sock  # Mount Docker socket for ibeam container management
     command: gunicorn -w 4 -b 0.0.0.0:8080 wsgi:app
