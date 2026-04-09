@@ -288,6 +288,7 @@ class Dashboard:
                         'gateway_host': e.get('gateway_host', '127.0.0.1'),
                         'gateway_port': e.get('gateway_port', 7497),
                         'client_id': e.get('client_id', 1),
+                        'paper_trading': e.get('paper_trading', True) if e.get('type') == 'ibkr' else None,
                     }
                 return jsonify(mapped)
             except Exception as ex:
@@ -324,6 +325,7 @@ class Dashboard:
                     'gateway_host': doc.get('gateway_host', '127.0.0.1'),
                     'gateway_port': doc.get('gateway_port', 7497),
                     'client_id': doc.get('client_id', 1),
+                    'paper_trading': doc.get('paper_trading', True) if doc.get('type') == 'ibkr' else None,
                 }
                 return jsonify(exchange_config)
             except Exception as ex:
@@ -395,6 +397,8 @@ class Dashboard:
                         update['client_id'] = int(data['client_id'])
                     except (ValueError, TypeError):
                         update['client_id'] = 1
+                if 'paper_trading' in data and exchange_type == 'ibkr':
+                    update['paper_trading'] = bool(data['paper_trading'])
                 if update:
                     db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
                     return jsonify({'status': 'success', 'message': 'Exchange updated in DB'})
@@ -686,6 +690,7 @@ class Dashboard:
                     'gateway_host': (data.get('gateway_host') or '127.0.0.1').strip(),
                     'gateway_port': int(data.get('gateway_port') or 7497),
                     'client_id': int(data.get('client_id') or 1),
+                    'paper_trading': bool(data.get('paper_trading', True)) if ex_type == 'ibkr' else None,
                 }
                 db = get_db()
                 db.exchange_accounts.update_one({'_id': ex_id}, {'$set': doc}, upsert=True)

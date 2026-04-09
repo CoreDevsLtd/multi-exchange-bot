@@ -582,6 +582,10 @@ const ExchangeModal = {
               </template>
 
               <template v-if="isIbkr">
+                <label class="check-row">
+                  <input v-model="form.paper_trading" type="checkbox"> Paper Trading (Demo Account)
+                </label>
+
                 <div class="field-row">
                   <div class="field-group">
                     <label>Gateway Host</label>
@@ -589,7 +593,7 @@ const ExchangeModal = {
                   </div>
                   <div class="field-group" style="max-width:130px">
                     <label>Gateway Port</label>
-                    <input v-model.number="form.gateway_port" type="number" min="1" max="65535" placeholder="7497">
+                    <input v-model.number="form.gateway_port" type="number" min="1" max="65535" :placeholder="form.paper_trading ? '7497' : '7496'">
                   </div>
                   <div class="field-group" style="max-width:100px">
                     <label>Client ID</label>
@@ -598,7 +602,7 @@ const ExchangeModal = {
                 </div>
                 <p style="color: var(--text-2); font-size: 12px; margin: 8px 0;">
                   <i class="fas fa-info-circle"></i>
-                  Use port <strong>7497</strong> for paper trading, <strong>7496</strong> for live trading.
+                  Paper: port <strong>7497</strong> | Live: port <strong>7496</strong>
                 </p>
               </template>
 
@@ -623,7 +627,7 @@ const ExchangeModal = {
         type: 'bybit', secretHasValue: false, saving: false, testing: false,
         symbolQuery: '', symbolResults: [],
         form: { enabled: true, api_key: '', api_secret: '', base_url: '',
-                trading_mode: 'spot', leverage: 1, paper_trading: false,
+                trading_mode: 'spot', leverage: 1, paper_trading: true,
                 use_sub_account: false, sub_account_id: '', proxy: '', symbol: null,
                 gateway_host: '127.0.0.1', gateway_port: 7497, client_id: 1 },
       });
@@ -653,6 +657,7 @@ const ExchangeModal = {
           gateway_host:    exchange.gateway_host ?? '127.0.0.1',
           gateway_port:    exchange.gateway_port ?? 7497,
           client_id:       exchange.client_id ?? 1,
+          paper_trading:   exchange.paper_trading !== false,
         },
       });
       this.open = true;
@@ -670,7 +675,7 @@ const ExchangeModal = {
       if (this.isBybit)  { p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
       if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
       if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
-      if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = parseInt(this.form.gateway_port); p.client_id = parseInt(this.form.client_id); }
+      if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = parseInt(this.form.gateway_port); p.client_id = parseInt(this.form.client_id); p.paper_trading = this.form.paper_trading; }
       return p;
     },
     async onSymbolSearch() {
