@@ -18,3 +18,6 @@ pymongo==4.5.0
 # Encryption helper
 cryptography==41.0.3
 
+# Interactive Brokers integration
+ib-insync==0.9.88
+
