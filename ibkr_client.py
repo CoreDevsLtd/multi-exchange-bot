@@ -318,6 +318,50 @@ class IBKRClient:
             logger.warning(f"Error fetching order status for {order_id}: {e}")
             return {'id': order_id, 'status': 'UNKNOWN', 'error': str(e)}
 
+    def get_open_orders(self, symbol: str = None) -> list:
+        """
+        Get list of open orders (optionally filtered by symbol)
+
+        Args:
+            symbol: Trading symbol (optional filter)
+
+        Returns:
+            List of open orders
+        """
+        try:
+            self._init_client()
+            if not self.account_id:
+                accounts = self.client.portfolio_accounts()
+                if accounts and accounts.data:
+                    self.account_id = accounts.data[0]['accountId']
+
+            orders = self.client.live_orders(account_id=self.account_id)
+
+            if not orders or not orders.data:
+                return []
+
+            result = []
+            formatted_symbol = self._format_symbol(symbol) if symbol else None
+
+            for order in orders.data:
+                # Filter by symbol if provided
+                if formatted_symbol and order.get('symbol') != formatted_symbol:
+                    continue
+
+                status = order.get('status', '').upper()
+                # Only include open/pending orders
+                if status not in ['SUBMITTED', 'PENDING_SUBMIT', 'OPEN', 'PENDING_CANCEL']:
+                    continue
+
+                result.append(order)
+
+            logger.debug(f"Found {len(result)} open orders" + (f" for {symbol}" if symbol else ""))
+            return result
+
+        except Exception as e:
+            logger.warning(f"Error fetching open orders: {e}")
+            return []
+
 
 # Test script
 if __name__ == '__main__':

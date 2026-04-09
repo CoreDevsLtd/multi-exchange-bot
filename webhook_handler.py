@@ -66,9 +66,10 @@ class WebhookHandler:
                         client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url)
                     elif ex_type == 'ibkr':
                         from ibkr_client import IBKRClient
-                        client = IBKRClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
-                                            account_id=ex_acc.get('account_id', ''), use_paper=ex_acc.get('use_paper', False),
-                                            leverage=ex_acc.get('leverage', 1))
+                        gateway_host = ex_acc.get('gateway_host', '127.0.0.1')
+                        gateway_port = int(ex_acc.get('gateway_port', 7497))
+                        client_id = int(ex_acc.get('client_id', 1))
+                        client = IBKRClient(host=gateway_host, port=gateway_port, client_id=client_id)
                     elif ex_type == 'bybit':
                         from bybit_client import BybitClient
                         proxy = (ex_acc.get('proxy') or '').strip() or None
