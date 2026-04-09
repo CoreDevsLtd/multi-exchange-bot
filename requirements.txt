@@ -19,9 +19,6 @@ pymongo==4.5.0
 # Encryption helper
 cryptography==41.0.3
 
-# Interactive Brokers integration (via ibeam + ibind)
-ibind==0.1.22
-
 # Docker SDK for ibeam container management
 docker==7.1.0
 
