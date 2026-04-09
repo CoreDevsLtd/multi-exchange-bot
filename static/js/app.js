@@ -1,1301 +1,1455 @@
 /**
- * Trading Bot Dashboard - Vue 3 SPA
- * Self-hosted Vue, no build process, clean state management
+ * Trading Bot Dashboard — Vue 3 SPA
+ *
+ * Architecture:
+ *  - Single reactive store (no duplicates)
+ *  - Centralised API layer with proper error handling
+ *  - Clean path-based router
+ *  - provide/inject for modal access (no store.modals hacks)
+ *  - Polling intervals cleaned up on unmount
+ *  - No manual XSS escaping — Vue templates handle this
  */
 
-const { createApp, ref, reactive, computed, watch, onMounted, onUnmounted } = Vue;
+'use strict';
 
-// ============================================================================
-// GLOBAL STORE & API
-// ============================================================================
+const { createApp, reactive, computed, watch, onMounted, onUnmounted } = Vue;
+
+/* ============================================================
+   CONSTANTS
+   ============================================================ */
+
+const EXCHANGE_TYPES = ['bybit', 'mexc', 'alpaca', 'ibkr'];
+
+const EXCHANGE_ABBR = { bybit: 'BY', mexc: 'MX', alpaca: 'AL', ibkr: 'IB' };
+
+const BASE_URL_DEFAULTS = {
+  bybit:  'https://api.bybit.com',
+  mexc:   'https://api.mexc.com',
+  alpaca: 'https://paper-api.alpaca.markets',
+  ibkr:   'https://localhost:5000',
+};
+
+/* ============================================================
+   STORE — single source of truth
+   ============================================================ */
 
 const store = reactive({
-  currentPage: 'overview',
-  currentAccountId: null,
-  accounts: [],
-  exchanges: {},
-  exchangeStatus: {},
-  tradingSettings: {},
-  riskManagement: {},
-  signals: [],
-  status: {},
-  loading: false,
-  toast: { message: '', type: '', visible: false, timeout: null }
+  page:         'overview',
+  accountId:    null,
+  accounts:     [],
+  exchanges:    {},   // keyed by exchange._id
+  exStatus:     {},   // keyed by exchange._id
+  settings:     {},
+  risk:         {},
+  signals:      [],
+  status:       {},
+  demoMode:     false,
+  demoStats:    {},
+  loading:      true,
+  toast: { msg: '', type: 'info', visible: false, _t: null },
 });
 
+/* ============================================================
+   TOAST
+   ============================================================ */
+
+function toast(msg, type = 'info') {
+  if (store.toast._t) clearTimeout(store.toast._t);
+  Object.assign(store.toast, { msg, type, visible: true });
+  store.toast._t = setTimeout(() => { store.toast.visible = false; }, 4000);
+}
+
+/* ============================================================
+   API — centralised fetch with unified error handling
+   ============================================================ */
+
 const api = {
+  async _req(method, url, body) {
+    const opts = { method, headers: {} };
+    if (body !== undefined) {
+      opts.headers['Content-Type'] = 'application/json';
+      opts.body = JSON.stringify(body);
+    }
+    const r = await fetch(url, opts);
+    if (!r.ok) throw new Error(`${method} ${url} → HTTP ${r.status}`);
+    return r.json();
+  },
+  get:    (url)       => api._req('GET',    url),
+  post:   (url, body) => api._req('POST',   url, body),
+  delete: (url)       => api._req('DELETE', url),
+
+  /* --- Accounts --- */
   async loadAccounts() {
-    try {
-      const resp = await fetch('/api/accounts');
-      const data = await resp.json();
-      store.accounts = data.accounts || [];
-      return data;
-    } catch (e) {
-      console.error('Error loading accounts:', e);
-      showToast('Failed to load accounts', 'error');
-    }
-  },
-
-  async loadExchangesForAccount(accountId) {
-    try {
-      const resp = await fetch(`/api/accounts/${accountId}/exchanges`);
-      const data = await resp.json();
-      const exchanges = data.exchanges || [];
-      exchanges.forEach(ex => {
-        store.exchanges[ex._id] = ex;
-      });
-      return exchanges;
-    } catch (e) {
-      console.error('Error loading exchanges for account:', e);
-      showToast('Failed to load exchanges', 'error');
-    }
-  },
-
-  async loadAllExchanges() {
-    try {
-      const resp = await fetch('/api/exchanges');
-      const data = await resp.json();
-      store.exchanges = data;
-      return data;
-    } catch (e) {
-      console.error('Error loading all exchanges:', e);
-    }
-  },
-
-  async loadTradingSettings() {
-    try {
-      const resp = await fetch('/api/trading-settings');
-      const data = await resp.json();
-      store.tradingSettings = data || {};
-      return data;
-    } catch (e) {
-      console.error('Error loading trading settings:', e);
-    }
-  },
-
-  async loadRiskManagement() {
-    try {
-      const resp = await fetch('/api/risk-management');
-      const data = await resp.json();
-      store.riskManagement = data || {};
-      return data;
-    } catch (e) {
-      console.error('Error loading risk management:', e);
-    }
-  },
-
-  async loadSignals() {
-    try {
-      const resp = await fetch('/api/signals/recent?limit=100&hours=24');
-      const data = await resp.json();
-      store.signals = data.signals || [];
-      return data;
-    } catch (e) {
-      console.error('Error loading signals:', e);
-    }
-  },
-
-  async loadStatus() {
-    try {
-      const resp = await fetch('/api/status');
-      const data = await resp.json();
-      store.status = data || {};
-      return data;
-    } catch (e) {
-      console.error('Error loading status:', e);
-    }
-  },
-
-  async loadExchangeStatus() {
-    try {
-      const resp = await fetch('/api/exchanges/status');
-      const data = await resp.json();
-      store.exchangeStatus = data || {};
-      return data;
-    } catch (e) {
-      console.error('Error loading exchange status:', e);
-    }
+    const d = await api.get('/api/accounts').catch(console.error);
+    if (d) store.accounts = d.accounts ?? [];
   },
 
   async saveAccount(data) {
-    try {
-      const resp = await fetch('/api/accounts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+    const r = await api.post('/api/accounts', data).catch(() => null);
+    if (r?.status === 'success') { await api.loadAccounts(); toast('Account saved', 'success'); return true; }
+    toast(r?.error ?? 'Failed to save account', 'error');
+    return false;
+  },
+
+  async deleteAccount(id) {
+    const r = await api.delete(`/api/accounts/${id}`).catch(() => null);
+    if (r?.status === 'success') {
+      store.accounts = store.accounts.filter(a => a._id !== id);
+      Object.keys(store.exchanges).forEach(k => {
+        if (store.exchanges[k].account_id === id) delete store.exchanges[k];
       });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        await api.loadAccounts();
-        showToast('Account saved', 'success');
-        return result;
-      } else {
-        showToast(result.error || 'Failed to save account', 'error');
-      }
-    } catch (e) {
-      console.error('Error saving account:', e);
-      showToast('Error saving account', 'error');
+      toast('Account deleted', 'success');
+      return true;
+    }
+    toast(r?.error ?? 'Failed to delete account', 'error');
+    return false;
+  },
+
+  async toggleAccount(id, enabled) {
+    await api.post('/api/accounts', { _id: id, enabled }).catch(console.error);
+  },
+
+  /* --- Exchanges --- */
+  async loadExchangesForAccount(accountId) {
+    const d = await api.get(`/api/accounts/${accountId}/exchanges`).catch(() => null);
+    (d?.exchanges ?? []).forEach(ex => { store.exchanges[ex._id] = { ...ex, account_id: accountId }; });
+    return d?.exchanges ?? [];
+  },
+
+  async loadAllExchanges() {
+    for (const ac of store.accounts) {
+      await api.loadExchangesForAccount(ac._id);
     }
   },
 
-  async deleteAccount(accountId) {
-    try {
-      const resp = await fetch(`/api/accounts/${accountId}`, { method: 'DELETE' });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        store.accounts = store.accounts.filter(a => a._id !== accountId);
-        // Clean up exchanges for this account
-        Object.keys(store.exchanges).forEach(exId => {
-          if (store.exchanges[exId].account_id === accountId) {
-            delete store.exchanges[exId];
-          }
-        });
-        showToast('Account deleted', 'success');
-        return result;
-      } else {
-        showToast(result.error || 'Failed to delete account', 'error');
-      }
-    } catch (e) {
-      console.error('Error deleting account:', e);
-      showToast('Error deleting account', 'error');
+  async saveExchange(accountId, data) {
+    const r = await api.post(`/api/accounts/${accountId}/exchanges`, data).catch(() => null);
+    if (r?.status === 'success') { await api.loadExchangesForAccount(accountId); toast('Exchange saved', 'success'); return true; }
+    toast(r?.error ?? 'Failed to save exchange', 'error');
+    return false;
+  },
+
+  async updateExchange(exchangeId, data) {
+    const r = await api.post(`/api/exchanges/${exchangeId}`, data).catch(() => null);
+    if (r?.status === 'success') { Object.assign(store.exchanges[exchangeId] ?? {}, data); toast('Exchange updated', 'success'); return true; }
+    toast(r?.error ?? 'Failed to update exchange', 'error');
+    return false;
+  },
+
+  async deleteExchange(id) {
+    const r = await api.delete(`/api/exchanges/${id}`).catch(() => null);
+    if (r?.status === 'success') { delete store.exchanges[id]; toast('Exchange deleted', 'success'); return true; }
+    toast(r?.error ?? 'Failed to delete exchange', 'error');
+    return false;
+  },
+
+  async toggleExchange(id, enabled) {
+    const r = await api.post(`/api/exchanges/${id}/toggle`, { enabled }).catch(() => null);
+    if (r?.status === 'success' && store.exchanges[id]) {
+      store.exchanges[id].enabled = enabled;
+      toast(enabled ? 'Exchange enabled' : 'Exchange disabled', 'success');
     }
   },
 
-  async toggleExchange(exchangeId, enabled) {
-    try {
-      const resp = await fetch(`/api/exchanges/${exchangeId}/toggle`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      });
-      const result = await resp.json();
-      if (result.status === 'success' && store.exchanges[exchangeId]) {
-        store.exchanges[exchangeId].enabled = enabled;
-        showToast(enabled ? 'Exchange enabled' : 'Exchange disabled', 'success');
-        return result;
-      }
-    } catch (e) {
-      console.error('Error toggling exchange:', e);
-      showToast('Error toggling exchange', 'error');
-    }
+  async loadExStatus() {
+    const d = await api.get('/api/exchanges/status').catch(() => null);
+    if (d) store.exStatus = d;
   },
 
-  async saveExchange(exchangeId, data) {
-    try {
-      const resp = await fetch(`/api/accounts/${data.account_id}/exchanges`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, _id: exchangeId })
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        await api.loadExchangesForAccount(data.account_id);
-        showToast('Exchange saved', 'success');
-        return result;
-      } else {
-        showToast(result.error || 'Failed to save exchange', 'error');
-      }
-    } catch (e) {
-      console.error('Error saving exchange:', e);
-      showToast('Error saving exchange', 'error');
-    }
+  async testConnection(id, body) {
+    const r = await api.post(`/api/test-connection/${id}`, body).catch(() => null);
+    if (r?.status === 'success') toast('Connection successful!', 'success');
+    else toast(r?.error ?? r?.message ?? 'Connection failed', 'error');
+    return r;
   },
 
-  async testConnection(exchangeId, body) {
-    try {
-      const resp = await fetch(`/api/test-connection/${exchangeId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        showToast('Connection successful!', 'success');
-      } else {
-        showToast(result.error || result.message || 'Connection failed', 'error');
-      }
-      return result;
-    } catch (e) {
-      console.error('Error testing connection:', e);
-      showToast('Error testing connection', 'error');
-    }
+  /* --- Symbols (single symbol per exchange) --- */
+  async loadSymbols(id) {
+    const d = await api.get(`/api/exchanges/${id}/symbols`).catch(() => null);
+    if (d && store.exchanges[id]) store.exchanges[id].symbol = d.symbol ?? null;
+    return d?.symbol ?? null;
   },
 
-  async saveSymbols(exchangeId, symbols) {
-    try {
-      const resp = await fetch(`/api/exchanges/${exchangeId}/symbols`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ symbols })
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        if (store.exchanges[exchangeId]) {
-          store.exchanges[exchangeId].symbols = result.symbols || symbols;
-        }
-        showToast('Symbols saved', 'success');
-        return result;
-      }
-    } catch (e) {
-      console.error('Error saving symbols:', e);
-      showToast('Error saving symbols', 'error');
+  async saveSymbols(id, symbol) {
+    const r = await api.post(`/api/exchanges/${id}/symbols`, { symbol }).catch(() => null);
+    if (r?.status === 'success') {
+      if (store.exchanges[id]) store.exchanges[id].symbol = r.symbol ?? symbol;
+      toast('Symbol saved', 'success');
+      return true;
     }
+    toast(r?.error ?? 'Failed to save symbol', 'error');
+    return false;
   },
 
-  async searchMarketSymbols(exchangeId, q) {
-    try {
-      const resp = await fetch(`/api/exchanges/${exchangeId}/market-symbols?q=${encodeURIComponent(q)}`);
-      const data = await resp.json();
-      return data.symbols || [];
-    } catch (e) {
-      console.error('Error searching symbols:', e);
-      return [];
-    }
+  async searchSymbols(id, q) {
+    const d = await api.get(`/api/exchanges/${id}/market-symbols?q=${encodeURIComponent(q)}`).catch(() => null);
+    return d?.symbols ?? [];
   },
 
-  async saveTradingSettings(settings) {
-    try {
-      const resp = await fetch('/api/trading-settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        store.tradingSettings = settings;
-        showToast('Trading settings saved', 'success');
-      }
-      return result;
-    } catch (e) {
-      console.error('Error saving trading settings:', e);
-      showToast('Error saving trading settings', 'error');
-    }
+  /* --- Settings --- */
+  async loadSettings() {
+    const [s, r] = await Promise.all([
+      api.get('/api/trading-settings').catch(() => null),
+      api.get('/api/risk-management').catch(() => null),
+    ]);
+    if (s) store.settings = s;
+    if (r) store.risk = r;
   },
 
-  async saveRiskManagement(settings) {
-    try {
-      const resp = await fetch('/api/risk-management', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(settings)
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        store.riskManagement = settings;
-        showToast('Risk management saved', 'success');
-      }
-      return result;
-    } catch (e) {
-      console.error('Error saving risk management:', e);
-      showToast('Error saving risk management', 'error');
-    }
-  }
+  async saveSettings(data) {
+    const r = await api.post('/api/trading-settings', data).catch(() => null);
+    if (r?.status === 'success') { store.settings = data; toast('Settings saved', 'success'); return true; }
+    toast(r?.error ?? 'Failed', 'error');
+    return false;
+  },
+
+  async saveRisk(data) {
+    const r = await api.post('/api/risk-management', data).catch(() => null);
+    if (r?.status === 'success') { store.risk = data; toast('Risk settings saved', 'success'); return true; }
+    toast(r?.error ?? 'Failed', 'error');
+    return false;
+  },
+
+  /* --- Status & Signals --- */
+  async loadSignals() {
+    const d = await api.get('/api/signals/recent?limit=100&hours=24').catch(() => null);
+    if (d) store.signals = d.signals ?? [];
+  },
+
+  async loadStatus() {
+    const [s, ss] = await Promise.all([
+      api.get('/api/status').catch(() => null),
+      api.get('/api/signals/status').catch(() => null),
+    ]);
+    if (s)  store.status = { ...store.status, ...s };
+    if (ss) store.status = { ...store.status, ...ss };
+    store.demoMode = !!store.status.demo_mode;
+  },
+
+  async loadDemoData() {
+    if (!store.demoMode) return;
+    const d = await api.get('/api/demo/stats').catch(() => null);
+    if (d) store.demoStats = d.stats ?? {};
+  },
 };
 
-// ============================================================================
-// ROUTER
-// ============================================================================
+/* ============================================================
+   ROUTER
+   ============================================================ */
 
-// Map page names to URL paths and vice versa
-function pageToPath(page, accountId = null) {
-  if (page === 'overview') return '/';
-  if (page === 'accounts') return '/accounts';
-  if (page === 'exchanges' && accountId) return `/exchanges/${encodeURIComponent(accountId)}`;
-  if (page === 'symbolsRouting') return '/symbols-routing';
-  if (page === 'tradingSettings') return '/trading-settings';
-  if (page === 'risk') return '/risk-management';
-  if (page === 'activity') return '/activity';
-  return '/';
-}
+const ROUTES = {
+  '/':                 { page: 'overview' },
+  '/accounts':         { page: 'accounts' },
+  '/symbols-routing':  { page: 'symbolsRouting' },
+  '/trading-settings': { page: 'tradingSettings' },
+  '/risk-management':  { page: 'risk' },
+  '/activity':         { page: 'activity' },
+};
 
-function pathToPage(pathname) {
-  pathname = pathname || '/';
-  if (pathname === '/') return { page: 'overview', accountId: null };
-  if (pathname === '/accounts') return { page: 'accounts', accountId: null };
-  if (pathname.startsWith('/exchanges/')) {
-    const accountId = decodeURIComponent(pathname.split('/')[2]);
-    return { page: 'exchanges', accountId };
-  }
-  if (pathname === '/symbols-routing') return { page: 'symbolsRouting', accountId: null };
-  if (pathname === '/trading-settings') return { page: 'tradingSettings', accountId: null };
-  if (pathname === '/risk-management') return { page: 'risk', accountId: null };
-  if (pathname === '/activity') return { page: 'activity', accountId: null };
+function parsePath(pathname) {
+  if (ROUTES[pathname]) return { ...ROUTES[pathname], accountId: null };
+  const m = pathname.match(/^\/exchanges\/(.+)$/);
+  if (m) return { page: 'exchanges', accountId: decodeURIComponent(m[1]) };
   return { page: 'overview', accountId: null };
 }
 
-function pushRoute(page, accountId = null) {
-  store.currentPage = page;
-  store.currentAccountId = accountId;
-  const url = pageToPath(page, accountId);
-  history.pushState({ page, accountId }, '', url);
+function buildPath(page, accountId = null) {
+  if (page === 'exchanges' && accountId) return `/exchanges/${encodeURIComponent(accountId)}`;
+  return Object.entries(ROUTES).find(([, v]) => v.page === page)?.[0] ?? '/';
 }
 
-function restoreFromURL() {
-  return pathToPage(location.pathname);
+function navigate(page, accountId = null, replace = false) {
+  store.page = page;
+  store.accountId = accountId;
+  const url = buildPath(page, accountId);
+  replace ? history.replaceState({ page, accountId }, '', url)
+           : history.pushState({ page, accountId }, '', url);
 }
 
-window.addEventListener('popstate', async (event) => {
-  const state = event.state || {};
-  const page = state.page || 'overview';
-  const accountId = state.accountId || null;
-  store.currentPage = page;
-  store.currentAccountId = accountId;
-  if (page === 'exchanges' && accountId) {
-    await api.loadExchangesForAccount(accountId);
-  }
+window.addEventListener('popstate', async e => {
+  const { page, accountId } = e.state ?? parsePath(location.pathname);
+  store.page = page;
+  store.accountId = accountId;
+  if (page === 'exchanges' && accountId) await api.loadExchangesForAccount(accountId);
 });
 
-// ============================================================================
-// UTILITIES
-// ============================================================================
+/* ============================================================
+   UTILITIES
+   ============================================================ */
 
-function escapeHtml(s) {
-  return String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+function fmtTime(iso) {
+  if (!iso) return 'Never';
+  return new Date(iso).toLocaleString();
 }
 
-function showToast(message, type = 'info') {
-  store.toast.message = message;
-  store.toast.type = type;
-  store.toast.visible = true;
-  if (store.toast.timeout) clearTimeout(store.toast.timeout);
-  store.toast.timeout = setTimeout(() => {
-    store.toast.visible = false;
-  }, 4000);
+function fmtTimeSince(sec) {
+  if (!sec) return '—';
+  const s = Math.floor(sec), m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (h > 0) return `${h}h ${m % 60}m ago`;
+  if (m > 0) return `${m}m ${s % 60}s ago`;
+  return `${s}s ago`;
 }
 
-function getExchangeTypeAbbr(type) {
-  const t = (type || '').toLowerCase();
-  if (t === 'bybit') return 'BY';
-  if (t === 'mexc') return 'MX';
-  if (t === 'alpaca') return 'AL';
-  if (t === 'ibkr') return 'IB';
-  return (type || '?').substring(0, 2).toUpperCase();
+function fmtBalance(bals) {
+  if (!bals || typeof bals !== 'object') return '—';
+  return Object.entries(bals)
+    .map(([a, b]) => {
+      const v = parseFloat(typeof b === 'object' ? (b.total ?? b.free ?? 0) : b) || 0;
+      return v > 0 ? `${a}: ${v >= 1 ? v.toFixed(2) : v.toFixed(4)}` : null;
+    })
+    .filter(Boolean).slice(0, 4).join(' · ') || '—';
 }
 
-function formatTime(isoString) {
-  if (!isoString) return 'Never';
-  const date = new Date(isoString);
-  return date.toLocaleString();
+function exchangeAbbr(type) {
+  return EXCHANGE_ABBR[(type ?? '').toLowerCase()] ?? (type ?? '?').slice(0, 2).toUpperCase();
 }
 
-// ============================================================================
-// MIXIN (for all components)
-// ============================================================================
+/* ============================================================
+   SHARED MIXIN — injected into every component
+   ============================================================ */
 
-const componentMixin = {
-  methods: {
-    formatTime,
-    escapeHtml,
-    showToast,
-    pushRoute,
-    getExchangeTypeAbbr
-  },
-  data() {
-    return { store, api };
-  }
+const mixin = {
+  data() { return { store, api }; },
+  methods: { toast, navigate, fmtTime, fmtTimeSince, fmtBalance, exchangeAbbr },
 };
 
-// ============================================================================
-// REUSABLE COMPONENTS
-// ============================================================================
+/* ============================================================
+   ATOMIC COMPONENTS
+   ============================================================ */
 
-const ExchangeTypeIcon = {
-  props: ['type'],
-  template: `<div :class="['exchange-type-icon', type]">{{ abbr }}</div>`,
-  computed: {
-    abbr() { return getExchangeTypeAbbr(this.type); }
-  }
-};
-
-const StatCard = {
-  props: ['label', 'value', 'sub', 'variant'],
-  template: `<div :class="['stat-card', variant]"><div class="stat-card-label">{{ label }}</div><div class="stat-card-value">{{ value }}</div><div class="stat-card-sub">{{ sub }}</div></div>`
-};
-
-const Badge = {
-  props: ['text', 'variant'],
-  template: `<span :class="['badge', 'badge-' + variant]">{{ text }}</span>`
-};
-
-const Toggle = {
+/** Toggle switch */
+const CToggle = {
   props: ['modelValue'],
   emits: ['update:modelValue'],
   template: `
-    <label class="toggle">
-      <input type="checkbox" :checked="modelValue" @change="$emit('update:modelValue', $event.target.checked)">
-      <span class="toggle-track"></span>
-    </label>
-  `
+    <label class="c-toggle">
+      <input type="checkbox" :checked="modelValue"
+             @change="$emit('update:modelValue', $event.target.checked)">
+      <span class="c-toggle-track"></span>
+    </label>`,
 };
 
-// ============================================================================
-// MODALS
-// ============================================================================
+/** Exchange type icon */
+const CExIcon = {
+  props: ['type'],
+  computed: { abbr() { return exchangeAbbr(this.type); } },
+  template: `<div :class="['ex-icon', (type || '').toLowerCase()]">{{ abbr }}</div>`,
+};
+
+/* ============================================================
+   ACCOUNT MODAL
+   ============================================================ */
 
 const AccountModal = {
-  data() {
-    return {
-      visible: false,
-      isEdit: false,
-      form: { _id: '', name: '', enabled: true }
-    };
-  },
-  provide() {
-    return { accountModal: this };
-  },
+  data: () => ({
+    open:    false,
+    saving:  false,
+    isEdit:  false,
+    form:    { _id: '', name: '', enabled: true },
+  }),
   template: `
-    <div v-if="visible" class="modal">
-      <div class="modal-content" style="max-width: 500px;">
-        <div class="modal-header">
-          <h3><i class="fas fa-user"></i> {{ isEdit ? 'Edit' : 'Create' }} Account</h3>
-          <button class="modal-close" @click="close()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label>Account Name</label>
-            <input v-model="form.name" type="text" placeholder="e.g. Main Account">
+    <teleport to="body">
+      <transition name="modal">
+        <div v-if="open" class="modal-backdrop" @mousedown.self="close">
+          <div class="modal-box">
+            <div class="modal-head">
+              {{ isEdit ? 'Edit Account' : 'New Account' }}
+              <button class="modal-close" @click="close">×</button>
+            </div>
+            <div class="modal-body">
+              <div class="field-group">
+                <label>Account Name</label>
+                <input v-model.trim="form.name" type="text" placeholder="e.g. Main Account" autofocus>
+              </div>
+              <label class="check-row">
+                <input v-model="form.enabled" type="checkbox"> Enabled
+              </label>
+            </div>
+            <div class="modal-foot">
+              <button class="btn" @click="close">Cancel</button>
+              <button class="btn btn-primary" @click="save" :disabled="saving">
+                {{ saving ? 'Saving…' : 'Save Account' }}
+              </button>
+            </div>
           </div>
-          <div class="form-group">
-            <label class="with-check">
-              <input v-model="form.enabled" type="checkbox">
-              Enabled
-            </label>
-          </div>
         </div>
-        <div class="modal-actions">
-          <button class="btn" @click="close()">Cancel</button>
-          <button class="btn btn-primary" @click="save()">Save</button>
-        </div>
-      </div>
-    </div>
-  `,
+      </transition>
+    </teleport>`,
   methods: {
-    open(account = null) {
+    show(account = null) {
       this.isEdit = !!account;
-      if (account) {
-        this.form = { ...account };
-      } else {
-        this.form = { _id: '', name: '', enabled: true };
-      }
-      this.visible = true;
+      this.form   = account
+        ? { _id: account._id, name: account.name ?? account._id, enabled: account.enabled !== false }
+        : { _id: '', name: '', enabled: true };
+      this.saving = false;
+      this.open   = true;
     },
-    close() {
-      this.visible = false;
-    },
+    close() { this.open = false; },
     async save() {
-      if (!this.form.name.trim()) {
-        showToast('Please enter account name', 'error');
-        return;
-      }
+      if (!this.form.name) { toast('Name is required', 'error'); return; }
+      this.saving = true;
       const data = { name: this.form.name, enabled: this.form.enabled };
       if (this.form._id) data._id = this.form._id;
-      await api.saveAccount(data);
-      this.close();
-    }
-  }
+      const ok = await api.saveAccount(data);
+      this.saving = false;
+      if (ok) this.close();
+    },
+  },
 };
+
+/* ============================================================
+   EXCHANGE MODAL
+   ============================================================ */
 
 const ExchangeModal = {
-  data() {
-    return {
-      visible: false,
-      exchangeId: null,
-      accountId: null,
-      type: 'bybit',
-      form: {
-        enabled: false,
-        api_key: '',
-        api_secret: '',
-        base_url: '',
-        trading_mode: 'spot',
-        leverage: 1,
-        testnet: false,
-        paper_trading: false,
-        sub_account_id: '',
-        use_sub_account: false,
-        proxy: ''
-      },
-      testingConnection: false,
-      testResult: null
-    };
-  },
-  provide() {
-    return { exchangeModal: this };
+  components: { CToggle },
+  data: () => ({
+    open:           false,
+    saving:         false,
+    testing:        false,
+    isCreate:       false,
+    exchangeId:     null,
+    accountId:      null,
+    type:           'bybit',
+    secretHasValue: false,
+    form: {
+      enabled: true, api_key: '', api_secret: '', base_url: '',
+      trading_mode: 'spot', leverage: 1,
+      paper_trading: false, use_sub_account: false, sub_account_id: '', proxy: '',
+      symbol: null,
+    },
+    symbolResults: [],
+    symbolQuery: '',
+    symbolTimer: null,
+  }),
+  computed: {
+    isIbkr()          { return this.type === 'ibkr'; },
+    isBybit()         { return this.type === 'bybit'; },
+    isMexc()          { return this.type === 'mexc'; },
+    isAlpaca()        { return this.type === 'alpaca'; },
+    baseUrlPlaceholder() { return BASE_URL_DEFAULTS[this.type] ?? ''; },
   },
   template: `
-    <div v-if="visible" class="modal">
-      <div class="modal-content" style="max-width: 600px;">
-        <div class="modal-header">
-          <h3><i class="fas fa-cog"></i> Configure {{ type.toUpperCase() }}</h3>
-          <button class="modal-close" @click="close()">×</button>
-        </div>
-        <div class="modal-body">
-          <div class="form-group">
-            <label class="with-check">
-              <input v-model="form.enabled" type="checkbox">
-              Enable Exchange
-            </label>
-          </div>
+    <teleport to="body">
+      <transition name="modal">
+        <div v-if="open" class="modal-backdrop" @mousedown.self="close">
+          <div class="modal-box modal-box--wide">
+            <div class="modal-head">
+              {{ isCreate ? 'Add Exchange' : 'Configure ' + type.toUpperCase() }}
+              <button class="modal-close" @click="close">×</button>
+            </div>
+            <div class="modal-body">
 
-          <!-- API Credentials (hidden for IBKR) -->
-          <template v-if="type !== 'ibkr'">
-            <div class="form-group">
-              <label>API Key</label>
-              <input v-model="form.api_key" type="text" placeholder="API Key">
-            </div>
-            <div class="form-group">
-              <label>API Secret</label>
-              <input v-model="form.api_secret" type="password" placeholder="API Secret">
-            </div>
-            <div class="form-group">
-              <label>Base URL</label>
-              <input v-model="form.base_url" type="text" :placeholder="getBaseUrlPlaceholder()">
-            </div>
-          </template>
+              <div v-if="isCreate" class="field-group">
+                <label>Exchange Type</label>
+                <select v-model="type">
+                  <option value="bybit">Bybit</option>
+                  <option value="mexc">MEXC</option>
+                  <option value="alpaca">Alpaca</option>
+                  <option value="ibkr">Interactive Brokers</option>
+                </select>
+              </div>
 
-          <!-- Bybit specific -->
-          <template v-if="type === 'bybit'">
-            <div class="form-group">
-              <label>Trading Mode</label>
-              <select v-model="form.trading_mode">
-                <option value="spot">Spot</option>
-                <option value="futures">Futures</option>
-              </select>
-            </div>
-            <div v-if="form.trading_mode === 'futures'" class="form-group">
-              <label>Leverage</label>
-              <input v-model.number="form.leverage" type="number" min="1" max="100">
-            </div>
-            <div class="form-group">
-              <label>Proxy URL (optional)</label>
-              <input v-model="form.proxy" type="text" placeholder="http://proxy:port">
-            </div>
-          </template>
-
-          <!-- MEXC specific -->
-          <template v-if="type === 'mexc'">
-            <div class="form-group">
-              <label class="with-check">
-                <input v-model="form.use_sub_account" type="checkbox">
-                Use Sub-Account
+              <label class="check-row">
+                <input v-model="form.enabled" type="checkbox"> Enable this exchange
               </label>
-            </div>
-            <div v-if="form.use_sub_account" class="form-group">
-              <label>Sub-Account ID</label>
-              <input v-model="form.sub_account_id" type="text" placeholder="Sub-account ID">
-            </div>
-            <div class="alert alert-warning">
-              <i class="fas fa-exclamation-triangle"></i> Sub-account feature requires additional configuration.
-            </div>
-          </template>
 
-          <!-- Alpaca specific -->
-          <template v-if="type === 'alpaca'">
-            <div class="form-group">
-              <label class="with-check">
-                <input v-model="form.paper_trading" type="checkbox">
-                Paper Trading (Demo)
-              </label>
-            </div>
-          </template>
+              <template v-if="!isIbkr">
+                <div class="field-group">
+                  <label>API Key</label>
+                  <input v-model.trim="form.api_key" type="text" placeholder="API Key" autocomplete="off">
+                </div>
+                <div class="field-group">
+                  <label>API Secret</label>
+                  <input v-model="form.api_secret" type="password"
+                         :placeholder="secretHasValue ? '(unchanged — type to replace)' : 'API Secret'"
+                         autocomplete="new-password">
+                </div>
 
-          <!-- IBKR specific -->
-          <template v-if="type === 'ibkr'">
-            <div class="form-group">
-              <label>Gateway Base URL</label>
-              <input v-model="form.base_url" type="text" placeholder="https://localhost:5000">
-            </div>
-            <div class="form-group">
-              <label>Leverage</label>
-              <input v-model.number="form.leverage" type="number" min="1" max="100">
-            </div>
-            <button class="btn btn-ghost" @click="openIBKRGateway()">
-              <i class="fas fa-external-link-alt"></i> Open Gateway Login
-            </button>
-          </template>
+                <div class="field-group">
+                  <label>Base URL <span class="field-hint">(leave blank for default)</span></label>
+                  <input v-model.trim="form.base_url" type="text" :placeholder="baseUrlPlaceholder">
+                </div>
+              </template>
 
-          <!-- Test Result -->
-          <div v-if="testResult" :class="['alert', testResult.status === 'success' ? 'alert-info' : 'alert-error']">
-            {{ testResult.message }}
+              <template v-if="isBybit">
+                <div class="field-row">
+                  <div class="field-group">
+                    <label>Trading Mode</label>
+                    <select v-model="form.trading_mode">
+                      <option value="spot">Spot</option>
+                      <option value="futures">Futures</option>
+                    </select>
+                  </div>
+                  <div v-if="form.trading_mode === 'futures'" class="field-group">
+                    <label>Leverage</label>
+                    <input v-model.number="form.leverage" type="number" min="1" max="100">
+                  </div>
+                </div>
+
+                <div class="field-group">
+                  <label>Symbol</label>
+                  <div style="position: relative; z-index: 100;">
+                    <input v-model="symbolQuery" type="text" placeholder="Search symbol (e.g. BTC)…"
+                           @input="onSymbolSearch" autocomplete="off" style="width: 100%;">
+                    <div v-if="symbolResults.length" style="position: absolute; top: calc(100% + 2px); left: 0; right: 0; background: var(--bg-2); border: 1px solid var(--bd); border-radius: var(--r-sm); max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                      <div v-for="s in symbolResults.slice(0, 20)" :key="s"
+                           @mousedown.prevent="form.symbol = s.toUpperCase(); symbolResults = []; symbolQuery = ''"
+                           style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--bd); transition: background 0.1s; user-select: none;"
+                           @mouseover="$event.target.style.background = 'var(--bg-hover)'"
+                           @mouseout="$event.target.style.background = 'transparent'">
+                        {{ s }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="form.symbol" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 16px;">
+                  <span class="symbol-badge">{{ form.symbol }}</span>
+                  <button class="btn btn-sm btn-danger" type="button" @click="form.symbol = null">
+                    <i class="fas fa-trash"></i> Clear
+                  </button>
+                </div>
+
+                <div class="field-group">
+                  <label>Proxy URL <span class="field-hint">(optional)</span></label>
+                  <input v-model.trim="form.proxy" type="text" placeholder="http://proxy:port">
+                </div>
+              </template>
+
+              <template v-if="isMexc">
+                <label class="check-row">
+                  <input v-model="form.use_sub_account" type="checkbox"> Use Sub-Account
+                </label>
+                <div v-if="form.use_sub_account" class="field-group">
+                  <label>Sub-Account ID</label>
+                  <input v-model.trim="form.sub_account_id" type="text" placeholder="Sub-account ID">
+                </div>
+
+                <div class="field-group">
+                  <label>Symbol</label>
+                  <div style="position: relative; z-index: 100;">
+                    <input v-model="symbolQuery" type="text" placeholder="Search symbol (e.g. BTC)…"
+                           @input="onSymbolSearch" autocomplete="off" style="width: 100%;">
+                    <div v-if="symbolResults.length" style="position: absolute; top: calc(100% + 2px); left: 0; right: 0; background: var(--bg-2); border: 1px solid var(--bd); border-radius: var(--r-sm); max-height: 200px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                      <div v-for="s in symbolResults.slice(0, 20)" :key="s"
+                           @mousedown.prevent="form.symbol = s.toUpperCase(); symbolResults = []; symbolQuery = ''"
+                           style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--bd); transition: background 0.1s; user-select: none;"
+                           @mouseover="$event.target.style.background = 'var(--bg-hover)'"
+                           @mouseout="$event.target.style.background = 'transparent'">
+                        {{ s }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="form.symbol" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 16px;">
+                  <span class="symbol-badge">{{ form.symbol }}</span>
+                  <button class="btn btn-sm btn-danger" type="button" @click="form.symbol = null">
+                    <i class="fas fa-trash"></i> Clear
+                  </button>
+                </div>
+
+                <div class="alert alert-warning">
+                  <i class="fas fa-exclamation-triangle"></i>
+                  Sub-account trading requires additional MEXC permissions.
+                </div>
+              </template>
+
+              <template v-if="isAlpaca">
+                <label class="check-row">
+                  <input v-model="form.paper_trading" type="checkbox"> Paper Trading (demo)
+                </label>
+
+                <div class="field-group">
+                  <label>Symbol</label>
+                  <div style="position: relative;">
+                    <input v-model="symbolQuery" type="text" placeholder="Search symbol (e.g. AAPL)…"
+                           @input="onSymbolSearch" autocomplete="off">
+                    <div v-if="symbolResults.length" style="position: absolute; top: 100%; left: 0; right: 0; background: var(--bg-2); border: 1px solid var(--bd); border-radius: var(--r-sm); max-height: 200px; overflow-y: auto; z-index: 10;">
+                      <div v-for="s in symbolResults.slice(0, 20)" :key="s"
+                           @click="form.symbol = s.toUpperCase(); symbolResults = []; symbolQuery = ''"
+                           style="padding: 8px 12px; cursor: pointer; border-bottom: 1px solid var(--bd-light); hover:background var(--bg-hover);">
+                        {{ s }}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div v-if="form.symbol" style="display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 16px;">
+                  <span class="symbol-badge">{{ form.symbol }}</span>
+                  <button class="btn btn-sm btn-danger" type="button" @click="form.symbol = null">
+                    <i class="fas fa-trash"></i> Clear
+                  </button>
+                </div>
+              </template>
+
+              <template v-if="isIbkr">
+                <div class="field-row">
+                  <div class="field-group">
+                    <label>Gateway URL</label>
+                    <input v-model.trim="form.base_url" type="text" placeholder="https://localhost:5000">
+                  </div>
+                  <div class="field-group" style="max-width:110px">
+                    <label>Leverage</label>
+                    <input v-model.number="form.leverage" type="number" min="1" max="100">
+                  </div>
+                </div>
+                <button class="btn btn-ghost" type="button" @click="openGateway">
+                  <i class="fas fa-external-link-alt"></i> Open Gateway Login
+                </button>
+              </template>
+
+            </div>
+            <div class="modal-foot">
+              <button class="btn btn-ghost" type="button" @click="testConn" :disabled="testing">
+                <i class="fas fa-plug"></i> {{ testing ? 'Testing…' : 'Test' }}
+              </button>
+              <button class="btn" @click="close">Cancel</button>
+              <button class="btn btn-primary" @click="save" :disabled="saving">
+                {{ saving ? 'Saving…' : 'Save' }}
+              </button>
+            </div>
           </div>
         </div>
-        <div class="modal-actions">
-          <button class="btn btn-ghost" @click="testConnection()" :disabled="testingConnection">
-            <i class="fas fa-plug"></i> {{ testingConnection ? 'Testing...' : 'Test' }}
-          </button>
-          <button class="btn" @click="close()">Cancel</button>
-          <button class="btn btn-primary" @click="save()">Save</button>
-        </div>
-      </div>
-    </div>
-  `,
+      </transition>
+    </teleport>`,
   methods: {
-    open(exchange, account) {
-      this.exchangeId = exchange._id;
-      this.accountId = account._id;
-      this.type = exchange.type;
-      this.form = {
-        enabled: exchange.enabled || false,
-        api_key: exchange.credentials?.api_key || '',
-        api_secret: exchange.credentials?.api_secret ? '***' : '',
-        base_url: exchange.base_url || '',
-        trading_mode: exchange.trading_mode || 'spot',
-        leverage: exchange.leverage || 1,
-        testnet: exchange.testnet || false,
-        paper_trading: exchange.paper_trading || false,
-        sub_account_id: exchange.sub_account_id || '',
-        use_sub_account: exchange.use_sub_account || false,
-        proxy: exchange.proxy || ''
-      };
-      this.testResult = null;
-      this.visible = true;
-    },
-    close() {
-      this.visible = false;
-    },
-    getBaseUrlPlaceholder() {
-      const placeholders = {
-        bybit: 'https://api.bybit.com',
-        mexc: 'https://api.mexc.com',
-        alpaca: 'https://paper-api.alpaca.markets'
-      };
-      return placeholders[this.type] || '';
-    },
-    openIBKRGateway() {
-      const url = this.form.base_url || 'https://localhost:5000';
-      window.open(url + '/', '_blank', 'noopener,noreferrer');
-      showToast('Sign in to IBKR in the new window, then click Test Connection', 'success');
-    },
-    async testConnection() {
-      this.testingConnection = true;
-      this.testResult = null;
-      const result = await api.testConnection(this.exchangeId, {
-        api_key: this.form.api_key,
-        api_secret: this.form.api_secret === '***' ? undefined : this.form.api_secret,
-        base_url: this.form.base_url,
-        trading_mode: this.form.trading_mode,
-        leverage: this.form.leverage
+    showCreate(accountId) {
+      Object.assign(this, {
+        isCreate: true, exchangeId: null, accountId,
+        type: 'bybit', secretHasValue: false, saving: false, testing: false,
+        symbolQuery: '', symbolResults: [],
+        form: { enabled: true, api_key: '', api_secret: '', base_url: '',
+                trading_mode: 'spot', leverage: 1, paper_trading: false,
+                use_sub_account: false, sub_account_id: '', proxy: '', symbol: null },
       });
-      this.testResult = result;
-      this.testingConnection = false;
+      this.open = true;
+    },
+    showEdit(exchange) {
+      const creds = exchange.credentials ?? {};
+      Object.assign(this, {
+        isCreate: false, exchangeId: exchange._id,
+        accountId: exchange.account_id,
+        type: (exchange.type ?? exchange._id).toLowerCase(),
+        secretHasValue: !!(creds.api_secret ?? exchange.api_secret),
+        saving: false, testing: false,
+        symbolQuery: '', symbolResults: [],
+        form: {
+          enabled:         exchange.enabled !== false,
+          api_key:         creds.api_key ?? exchange.api_key ?? '',
+          api_secret:      '',
+          base_url:        exchange.base_url ?? '',
+          trading_mode:    exchange.trading_mode ?? 'spot',
+          leverage:        exchange.leverage ?? 1,
+          paper_trading:   !!exchange.paper_trading,
+          use_sub_account: !!exchange.use_sub_account,
+          sub_account_id:  exchange.sub_account_id ?? '',
+          proxy:           exchange.proxy ?? '',
+          symbol:          exchange.symbol ?? null,
+        },
+      });
+      this.open = true;
+    },
+    close() { this.open = false; },
+    payload() {
+      const p = {
+        type:     this.type,
+        enabled:  this.form.enabled,
+        api_key:  this.form.api_key,
+        base_url: this.form.base_url,
+        symbol:   this.form.symbol,
+      };
+      if (this.form.api_secret) p.api_secret = this.form.api_secret;
+      if (this.isBybit)  { p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
+      if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
+      if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
+      if (this.isIbkr)   { p.leverage = this.form.leverage; }
+      return p;
+    },
+    async onSymbolSearch() {
+      clearTimeout(this.symbolTimer);
+      if (!this.symbolQuery.trim()) { this.symbolResults = []; return; }
+      this.symbolTimer = setTimeout(async () => {
+        this.symbolResults = await api.searchSymbols(this.exchangeId || `${this.accountId}_${this.type}`, this.symbolQuery);
+      }, 250);
+    },
+    async testConn() {
+      this.testing = true;
+      const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
+      await api.testConnection(id, this.payload());
+      this.testing = false;
     },
     async save() {
-      const data = {
-        account_id: this.accountId,
-        enabled: this.form.enabled,
-        type: this.type,
-        api_key: this.form.api_key,
-        base_url: this.form.base_url,
-        trading_mode: this.form.trading_mode,
-        leverage: this.form.leverage,
-        testnet: this.form.testnet,
-        paper_trading: this.form.paper_trading,
-        proxy: this.form.proxy
-      };
-      if (this.form.api_secret && this.form.api_secret !== '***') {
-        data.api_secret = this.form.api_secret;
+      this.saving = true;
+      const p = this.payload();
+      let ok;
+      if (this.isCreate) {
+        p._id = `${this.accountId}_${this.type}`;
+        ok = await api.saveExchange(this.accountId, p);
+      } else {
+        ok = await api.updateExchange(this.exchangeId, p);
       }
-      if (this.type === 'mexc') {
-        data.use_sub_account = this.form.use_sub_account;
-        data.sub_account_id = this.form.sub_account_id;
-      }
-      await api.saveExchange(this.exchangeId, data);
-      this.close();
-    }
-  }
+      this.saving = false;
+      if (ok) this.close();
+    },
+    openGateway() {
+      const url = (this.form.base_url || 'https://localhost:5000').replace(/\/$/, '');
+      window.open(url + '/', '_blank', 'noopener,noreferrer');
+      toast('Sign in to IBKR, then click Test Connection.', 'success');
+    },
+  },
 };
 
-// ============================================================================
-// PAGES
-// ============================================================================
+/* ============================================================
+   SYMBOL MANAGER (inline panel)
+   ============================================================ */
+
+const SymbolManager = {
+  mixins: [mixin],
+  props: ['exchangeId'],
+  emits: ['close'],
+  data: () => ({ q: '', results: [], timer: null }),
+  computed: {
+    exchange() { return store.exchanges[this.exchangeId] ?? {}; },
+    symbol()   { return this.exchange.symbol ?? null; },
+  },
+  mounted() { api.loadSymbols(this.exchangeId); },
+  template: `
+    <div class="symbol-panel">
+      <div class="symbol-panel-head">
+        <span><i class="fas fa-list"></i> Symbol — {{ (exchange.type || exchangeId).toUpperCase() }}</span>
+        <button class="btn btn-sm" @click="$emit('close')">✕ Close</button>
+      </div>
+      <div class="symbol-search-wrap">
+        <i class="fas fa-search symbol-search-icon"></i>
+        <input class="symbol-search-input" v-model="q" type="text"
+               placeholder="Search symbol (e.g. BTC)…"
+               @input="onInput" @keydown.enter.prevent="selectFromInput"
+               autocomplete="off">
+        <div v-if="results.length" class="symbol-dropdown">
+          <div v-for="s in results.slice(0, 25)" :key="s"
+               class="symbol-dropdown-item" @mousedown.prevent="select(s)">{{ s }}</div>
+        </div>
+      </div>
+      <div class="symbol-current">
+        <div v-if="symbol" class="symbol-row">
+          <span class="symbol-badge">{{ symbol }}</span>
+          <button class="btn btn-sm btn-danger btn-icon" @click="clear">
+            <i class="fas fa-trash"></i> Clear
+          </button>
+        </div>
+        <div v-else class="empty-inline">No symbol configured yet.</div>
+      </div>
+    </div>`,
+  methods: {
+    onInput() {
+      clearTimeout(this.timer);
+      if (!this.q.trim()) { this.results = []; return; }
+      this.timer = setTimeout(async () => {
+        this.results = await api.searchSymbols(this.exchangeId, this.q);
+      }, 250);
+    },
+    async select(sym) {
+      const s = sym.trim().toUpperCase();
+      if (!s) return;
+      await api.saveSymbols(this.exchangeId, s);
+      this.q = ''; this.results = [];
+    },
+    selectFromInput() { if (this.q.trim()) this.select(this.q); },
+    async clear() {
+      await api.saveSymbols(this.exchangeId, null);
+    },
+  },
+};
+
+/* ============================================================
+   EXCHANGE CARD
+   ============================================================ */
+
+const ExchangeCard = {
+  mixins: [mixin],
+  components: { CToggle, CExIcon },
+  props: ['exchangeId'],
+  emits: ['configure'],
+  data: () => ({}),
+  computed: {
+    ex()        { return store.exchanges[this.exchangeId] ?? {}; },
+    status()    { return store.exStatus[this.exchangeId] ?? {}; },
+    type()      { return (this.ex.type ?? this.exchangeId).toLowerCase(); },
+    connected() { return !!this.status.connected; },
+    enabled()   { return this.ex.enabled !== false; },
+    symbol()    { return this.ex.symbol ?? null; },
+    modeLabel() {
+      const m = this.ex.trading_mode;
+      if (m) return m.charAt(0).toUpperCase() + m.slice(1);
+      return this.ex.paper_trading ? 'Paper' : this.ex.testnet ? 'Testnet' : 'Live';
+    },
+  },
+  template: `
+    <div :class="['ex-card', enabled ? 'ex-card--on' : 'ex-card--off']">
+      <div class="ex-card-head">
+        <div class="ex-card-title">
+          <c-ex-icon :type="type"></c-ex-icon>
+          <div>
+            <div class="ex-card-name">{{ (ex.type || exchangeId).toUpperCase() }}</div>
+            <div class="ex-card-id">{{ exchangeId }}</div>
+          </div>
+        </div>
+        <span :class="['badge', connected ? 'badge-success' : 'badge-neutral']">
+          {{ connected ? '● Live' : '○ Offline' }}
+        </span>
+      </div>
+      <div class="ex-card-body">
+        <div class="ex-row">
+          <span class="ex-label">Mode</span>
+          <span class="ex-val">{{ modeLabel }}{{ ex.leverage > 1 ? ' · ' + ex.leverage + 'x' : '' }}</span>
+        </div>
+        <div v-if="connected && status.balances" class="ex-row">
+          <span class="ex-label">Balance</span>
+          <span class="ex-val ex-val--mono">{{ fmtBalance(status.balances) }}</span>
+        </div>
+        <div v-if="symbol" class="ex-symbol">
+          <span class="symbol-badge">{{ symbol }}</span>
+        </div>
+      </div>
+      <div class="ex-card-foot">
+        <div class="ex-card-foot-l">
+          <button class="btn btn-sm" @click="$emit('configure', exchangeId)">
+            <i class="fas fa-cog"></i> Configure
+          </button>
+          <button class="btn btn-sm btn-danger btn-icon" @click="del">
+            <i class="fas fa-trash"></i>
+          </button>
+        </div>
+        <c-toggle :model-value="enabled" @update:model-value="toggle"></c-toggle>
+      </div>
+    </div>`,
+  methods: {
+    toggle(v) { api.toggleExchange(this.exchangeId, v); },
+    async del() {
+      if (!confirm(`Delete exchange ${this.exchangeId}? This cannot be undone.`)) return;
+      await api.deleteExchange(this.exchangeId);
+    },
+  },
+};
+
+/* ============================================================
+   PAGES
+   ============================================================ */
 
 const OverviewPage = {
-  mixins: [componentMixin],
-  template: `<div class="page-content">
-    <div class="stat-cards-grid">
-      <stat-card label="Accounts" :value="accountCount" sub="configured" variant="info"></stat-card>
-      <stat-card label="Exchange Accounts" :value="exchangeCount" sub="configured" variant="accent"></stat-card>
-      <stat-card label="Enabled" :value="enabledCount" sub="active" variant="success"></stat-card>
-      <stat-card label="Signals (24h)" :value="signalCount" sub="received" variant="info"></stat-card>
-    </div>
-    <div class="signal-hero">
-      <div class="signal-hero-header">
-        <div class="signal-hero-title"><i class="fas fa-satellite-dish"></i> TradingView Signal Monitor</div>
-        <div class="connection-pill">
-          <span class="dot" :style="{background: isConnected ? '#10b981' : '#ef4444'}"></span>
-          <span>{{ isConnected ? '● Connected' : '○ Offline' }}</span>
-        </div>
-      </div>
-      <div class="signal-status-cards">
-        <div class="signal-status-card">
-          <div class="signal-status-card-title">Webhook Status</div>
-          <div class="signal-stat-row"><span class="signal-stat-label">Status</span><span class="signal-stat-value">{{ webhookStatus }}</span></div>
-          <div class="signal-stat-row"><span class="signal-stat-label">Last Signal</span><span class="signal-stat-value">{{ lastSignalTime }}</span></div>
-        </div>
-        <div class="signal-status-card">
-          <div class="signal-status-card-title">Statistics</div>
-          <div class="signal-stat-row"><span class="signal-stat-label">Total Signals</span><span class="signal-stat-value">{{ signalCount }}</span></div>
-        </div>
-      </div>
-    </div>
-    <div style="margin-top: 2rem;">
-      <div class="section-title">Recent Signals</div>
-      <table class="signals-table">
-        <thead>
-          <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Price</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="sig in recentSignals" :key="sig.id">
-            <td>{{ formatTime(sig.timestamp) }}</td>
-            <td><strong>{{ sig.symbol }}</strong></td>
-            <td><span :class="['sig-badge', sig.signal.toLowerCase()]">{{ sig.signal }}</span></td>
-            <td>{{ sig.price ? sig.price.toFixed(4) : '—' }}</td>
-            <td>✓ Received</td>
-          </tr>
-        </tbody>
-      </table>
-      <div v-if="!recentSignals || recentSignals.length === 0" class="empty-state" style="margin-top: 2rem;">
-        <i class="fas fa-inbox"></i>
-        <p>No signals received in the last 24 hours</p>
-      </div>
-    </div>
-  </div>`,
+  mixins: [mixin],
   computed: {
-    accountCount() { return store.accounts.length; },
-    exchangeCount() { return Object.keys(store.exchangeStatus).length; },
-    enabledCount() { return Object.values(store.exchangeStatus).filter(e => e.connected).length; },
-    signalCount() { return store.signals.length; },
+    exchanges()     { return Object.values(store.exchanges); },
+    enabledCount()  { return this.exchanges.filter(e => e.enabled !== false).length; },
+    signalCount()   { return store.signals.length; },
+    isConnected()   { return store.status?.webhook_status === 'connected'; },
+    lastSignal()    { return fmtTime(store.status?.last_signal_datetime); },
+    timeSince()     { return fmtTimeSince(store.status?.time_since_last_signal); },
     recentSignals() { return store.signals.slice(0, 20); },
-    isConnected() { return store.status && store.status.webhook_connected; },
-    webhookStatus() { return store.status && store.status.webhook_status ? 'Active' : 'Inactive'; },
-    lastSignalTime() { return formatTime(store.status && store.status.last_signal_time); }
-  }
-};
-
-const AccountsPage = {
-  mixins: [componentMixin],
-  template: `<div class="page-content">
-    <div class="page-header">
-      <h2><i class="fas fa-user"></i> Accounts</h2>
-      <div class="page-header-actions">
-        <button class="btn btn-primary" @click="createAccount()"><i class="fas fa-plus"></i> New Account</button>
-      </div>
-    </div>
-    <div v-if="store.accounts.length === 0" class="empty-state">
-      <i class="fas fa-user-plus"></i>
-      <div class="empty-title">No accounts yet</div>
-      <p>Create your first account to get started.</p>
-    </div>
-    <div v-else class="accounts-grid">
-      <div v-for="account in store.accounts" :key="account._id" :class="['account-card', {enabled: account.enabled}]">
-        <div class="account-card-header">
-          <div>
-            <div class="account-card-name">{{ account.name || account._id }}</div>
-            <div class="account-card-id">{{ account._id }}</div>
-          </div>
-          <span :class="['badge', account.enabled ? 'badge-success' : 'badge-neutral']">{{ account.enabled ? 'Enabled' : 'Disabled' }}</span>
+  },
+  template: `
+    <div class="page">
+      <div class="stat-strip">
+        <div class="stat-card">
+          <div class="stat-label">Accounts</div>
+          <div class="stat-val">{{ store.accounts.length }}</div>
         </div>
-        <div class="account-card-footer">
-          <div style="display: flex; gap: 0.5rem;">
-            <button class="btn btn-sm" @click="viewExchanges(account._id)"><i class="fas fa-list"></i> Exchanges</button>
-            <button class="btn btn-sm" @click="editAccount(account)"><i class="fas fa-edit"></i> Edit</button>
-            <button class="btn btn-sm btn-danger btn-icon" @click="deleteAccount(account._id)"><i class="fas fa-trash"></i></button>
-          </div>
-          <toggle v-model="account.enabled" @update:modelValue="toggleAccount(account._id, $event)"></toggle>
+        <div class="stat-card">
+          <div class="stat-label">Exchanges</div>
+          <div class="stat-val">{{ exchanges.length }}</div>
+        </div>
+        <div class="stat-card stat-card--success">
+          <div class="stat-label">Enabled</div>
+          <div class="stat-val">{{ enabledCount }}</div>
+        </div>
+        <div class="stat-card stat-card--blue">
+          <div class="stat-label">Signals 24h</div>
+          <div class="stat-val">{{ signalCount }}</div>
         </div>
       </div>
-    </div>
-  </div>`,
-  methods: {
-    createAccount() {
-      this.$root.$refs.accountModal.open();
-    },
-    editAccount(account) {
-      const modal = this.$root?.$refs?.accountModal;
-      if (modal && modal.open) {
-        modal.open(account);
-      } else {
-        showToast('Modal not ready', 'error');
-      }
-    },
-    viewExchanges(accountId) {
-      pushRoute('exchanges', accountId);
-    },
-    toggleAccount(accountId, enabled) {
-      const account = store.accounts.find(a => a._id === accountId);
-      if (account) account.enabled = enabled;
-      api.saveAccount({ _id: accountId, enabled });
-    },
-    async deleteAccount(accountId) {
-      if (!confirm(`Delete account and all its exchanges? This cannot be undone.`)) return;
-      await api.deleteAccount(accountId);
-    }
-  }
-};
 
-const ExchangesPage = {
-  mixins: [componentMixin],
-  template: `<div class="page-content">
-    <div class="page-header">
-      <h2><i class="fas fa-exchange-alt"></i> Exchanges{{ currentAccountName ? ' - ' + currentAccountName : '' }}</h2>
-      <div class="page-header-actions">
-        <button class="btn" @click="goBack()"><i class="fas fa-arrow-left"></i> Back</button>
-      </div>
-    </div>
-    <div v-if="!store.currentAccountId" class="empty-state">
-      <p>Please select an account</p>
-    </div>
-    <div v-else class="exchange-cards-grid">
-      <div v-for="ex in accountExchanges" :key="ex._id" :class="['exchange-card', {enabled: ex.enabled}]">
-        <div class="exchange-card-header">
-          <div class="exchange-card-title-row">
-            <exchange-type-icon :type="ex.type"></exchange-type-icon>
-            <div>
-              <div class="exchange-card-name">{{ ex.type.toUpperCase() }}</div>
-              <div class="exchange-card-id">{{ ex._id }}</div>
+      <div class="signal-hero">
+        <div class="signal-hero-head">
+          <div class="signal-hero-title">
+            <i class="fas fa-satellite-dish"></i> TradingView Signal Monitor
+          </div>
+          <div class="conn-pill" :class="isConnected ? 'conn-pill--on' : ''">
+            <span class="conn-dot"></span>
+            {{ isConnected ? 'Connected' : 'Waiting' }}
+          </div>
+        </div>
+        <div class="signal-stat-grid">
+          <div class="signal-stat-box">
+            <div class="signal-stat-ttl">Webhook</div>
+            <div class="signal-stat-row">
+              <span>Status</span>
+              <strong :class="isConnected ? 'clr-success' : 'clr-muted'">
+                {{ isConnected ? 'Active' : 'Idle' }}
+              </strong>
+            </div>
+            <div class="signal-stat-row"><span>Last signal</span><strong>{{ lastSignal }}</strong></div>
+            <div class="signal-stat-row"><span>Time since</span><strong>{{ timeSince }}</strong></div>
+          </div>
+          <div class="signal-stat-box">
+            <div class="signal-stat-ttl">Statistics</div>
+            <div class="signal-stat-row">
+              <span>Total received</span><strong>{{ store.status.total_signals || 0 }}</strong>
+            </div>
+            <div class="signal-stat-row">
+              <span>Executed</span>
+              <strong class="clr-success">{{ store.status.successful_trades || 0 }}</strong>
+            </div>
+            <div class="signal-stat-row">
+              <span>Failed</span>
+              <strong class="clr-error">{{ store.status.failed_trades || 0 }}</strong>
             </div>
           </div>
-          <span :class="['badge', isConnected(ex._id) ? 'badge-success' : 'badge-neutral']">{{ isConnected(ex._id) ? '● Connected' : '○ Offline' }}</span>
         </div>
-        <div class="exchange-card-body">
-          <div class="exchange-card-row">
-            <span class="exchange-card-row-label">Mode</span>
-            <span class="exchange-card-row-value">{{ ex.trading_mode || 'Spot' }}{{ ex.leverage && ex.leverage > 1 ? ' · ' + ex.leverage + 'x' : '' }}</span>
-          </div>
-          <div v-if="exchangeStatus[ex._id] && exchangeStatus[ex._id].balances" class="exchange-card-row">
-            <span class="exchange-card-row-label">Balance</span>
-            <span class="exchange-card-row-value" style="font-size:11px;">{{ formatBalance(exchangeStatus[ex._id].balances) }}</span>
-          </div>
-          <div class="exchange-symbols-row">
-            <span v-for="sym in (ex.symbols || [])" :key="sym" class="symbol-badge">{{ sym }}</span>
-            <span v-if="!ex.symbols || ex.symbols.length === 0" class="text-muted" style="font-size:11px;">No symbols</span>
-          </div>
+        <div class="signal-table-wrap">
+          <table class="signal-table">
+            <thead>
+              <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Price</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <tr v-if="!recentSignals.length">
+                <td colspan="5" class="td-empty">No signals in the last 24 hours</td>
+              </tr>
+              <tr v-for="sig in recentSignals" :key="sig.id ?? sig.timestamp">
+                <td class="td-time">
+                  {{ new Date(sig.datetime ?? sig.timestamp).toLocaleTimeString() }}
+                  <br><span class="td-date">{{ new Date(sig.datetime ?? sig.timestamp).toLocaleDateString() }}</span>
+                </td>
+                <td><strong>{{ sig.symbol || '—' }}</strong></td>
+                <td><span :class="['sig-badge', (sig.signal || '').toLowerCase()]">{{ sig.signal || '—' }}</span></td>
+                <td>{{ sig.price ? sig.price.toFixed(2) : '—' }}</td>
+                <td>
+                  <span :class="['sig-badge', sig.executed ? 'ok' : sig.error ? 'fail' : 'skip']">
+                    {{ sig.executed ? 'Executed' : sig.error ? 'Failed' : 'Pending' }}
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
         </div>
-        <div class="exchange-card-footer">
-          <div class="exchange-card-footer-left">
-            <button class="btn btn-sm" @click="configureExchange(ex)"><i class="fas fa-cog"></i> Configure</button>
-            <button class="btn btn-sm" @click="manageSymbols(ex)"><i class="fas fa-list"></i> Symbols</button>
+      </div>
+    </div>`,
+};
+
+/* ---- Accounts Page ---- */
+const AccountsPage = {
+  mixins: [mixin],
+  components: { CToggle },
+  inject: ['showAccountModal'],
+  template: `
+    <div class="page">
+      <div class="page-head">
+        <h2><i class="fas fa-user"></i> Accounts</h2>
+        <button class="btn btn-primary" @click="showAccountModal()">
+          <i class="fas fa-plus"></i> New Account
+        </button>
+      </div>
+      <div v-if="!store.accounts.length" class="empty-state">
+        <i class="fas fa-user-plus"></i>
+        <div class="empty-title">No accounts yet</div>
+        <p>Create your first account to get started.</p>
+      </div>
+      <div v-else class="accounts-grid">
+        <div v-for="ac in store.accounts" :key="ac._id"
+             :class="['account-card', ac.enabled !== false ? 'account-card--on' : '']">
+          <div class="account-card-head">
+            <div>
+              <div class="account-card-name">{{ ac.name || ac._id }}</div>
+              <div class="account-card-id">{{ ac._id }}</div>
+            </div>
+            <span :class="['badge', ac.enabled !== false ? 'badge-success' : 'badge-neutral']">
+              {{ ac.enabled !== false ? 'Enabled' : 'Disabled' }}
+            </span>
           </div>
-          <div class="exchange-card-footer-right">
-            <toggle v-model="ex.enabled" @update:modelValue="toggleEx(ex._id, $event)"></toggle>
+          <div class="account-card-foot">
+            <div style="display:flex;gap:5px;flex-wrap:wrap">
+              <button class="btn btn-sm" @click="navigate('exchanges', ac._id)">
+                <i class="fas fa-list"></i> Exchanges
+              </button>
+              <button class="btn btn-sm" @click="showAccountModal(ac)">
+                <i class="fas fa-edit"></i> Edit
+              </button>
+              <button class="btn btn-sm btn-danger btn-icon" @click="del(ac._id)">
+                <i class="fas fa-trash"></i>
+              </button>
+            </div>
+            <c-toggle :model-value="ac.enabled !== false"
+                      @update:model-value="toggle(ac._id, $event)">
+            </c-toggle>
           </div>
         </div>
       </div>
-    </div>
-    <div v-if="managingSymbols" class="symbols-manager" style="margin-top: 2rem; padding: 1.5rem; border: 1px solid var(--border); border-radius: var(--radius);">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-        <h3><i class="fas fa-list"></i> Manage Symbols</h3>
-        <button class="btn btn-sm" @click="closeSymbols()">Close</button>
-      </div>
-      <div class="form-group" style="margin-bottom: 1rem;">
-        <input v-model="symbolSearch" type="text" placeholder="Search symbols (e.g. BTC)..." @input="searchSymbols()">
-        <div v-if="symbolSearchResults.length > 0" style="margin-top: 0.5rem; background: var(--bg-secondary); border: 1px solid var(--border); border-radius: var(--radius-sm); max-height: 200px; overflow-y: auto;">
-          <div v-for="sym in symbolSearchResults.slice(0, 20)" :key="sym" @click="addSymbol(sym)" style="padding: 0.5rem; cursor: pointer; border-bottom: 1px solid var(--border-light); hover: {background: var(--bg-tertiary)};">{{ sym }}</div>
-        </div>
-      </div>
-      <table class="plain-table" style="width: 100%;">
-        <thead>
-          <tr><th>Symbol</th><th>Action</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="sym in (currentExchange && currentExchange.symbols || [])" :key="sym">
-            <td><span class="symbol-badge">{{ sym }}</span></td>
-            <td><button class="btn btn-sm btn-danger" @click="removeSymbol(sym)"><i class="fas fa-trash"></i> Remove</button></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>`,
-  data() {
-    return {
-      managingSymbols: false,
-      currentExchange: null,
-      symbolSearch: '',
-      symbolSearchResults: [],
-      searchTimeout: null
-    };
+    </div>`,
+  methods: {
+    toggle(id, enabled) {
+      const ac = store.accounts.find(a => a._id === id);
+      if (ac) ac.enabled = enabled;
+      api.toggleAccount(id, enabled);
+    },
+    async del(id) {
+      if (!confirm('Delete this account and all its exchanges?')) return;
+      await api.deleteAccount(id);
+    },
   },
+};
+
+/* ---- Exchanges Page ---- */
+const ExchangesPage = {
+  mixins: [mixin],
+  components: { ExchangeCard },
+  inject: ['showExchangeModal'],
   computed: {
-    currentAccountName() {
-      if (!store.currentAccountId) return '';
-      const acc = store.accounts.find(a => a._id === store.currentAccountId);
-      return acc ? acc.name : store.currentAccountId;
+    accountName() {
+      return store.accounts.find(a => a._id === store.accountId)?.name ?? store.accountId ?? '';
     },
-    accountExchanges() {
-      if (!store.currentAccountId) return [];
-      return Object.values(store.exchanges).filter(ex => ex.account_id === store.currentAccountId);
+    exchangeIds() {
+      if (!store.accountId) return [];
+      return Object.keys(store.exchanges).filter(id => store.exchanges[id].account_id === store.accountId);
     },
-    exchangeStatus() {
-      return store.exchangeStatus;
-    }
   },
   watch: {
-    'store.currentAccountId': async function(newAccountId) {
-      if (newAccountId) {
-        await api.loadExchangesForAccount(newAccountId);
-      }
-    }
+    'store.accountId': {
+      immediate: true,
+      handler(id) { if (id) api.loadExchangesForAccount(id); },
+    },
   },
-  methods: {
-    goBack() {
-      pushRoute('accounts');
-    },
-    isConnected(exId) {
-      return store.exchangeStatus[exId] && store.exchangeStatus[exId].connected;
-    },
-    formatBalance(balances) {
-      if (!balances) return '—';
-      const parts = [];
-      for (const [asset, bal] of Object.entries(balances)) {
-        let total = typeof bal === 'object' ? (bal.total || bal.free || 0) : bal;
-        if (total > 0) parts.push(`${asset}: ${parseFloat(total).toFixed(2)}`);
-      }
-      return parts.slice(0, 4).join(' · ') || '—';
-    },
-    configureExchange(ex) {
-      const acc = store.accounts.find(a => a._id === store.currentAccountId);
-      this.$root.$refs.exchangeModal.open(ex, acc);
-    },
-    manageSymbols(ex) {
-      this.currentExchange = ex;
-      this.managingSymbols = true;
-      this.symbolSearch = '';
-      this.symbolSearchResults = [];
-    },
-    closeSymbols() {
-      this.managingSymbols = false;
-      this.currentExchange = null;
-    },
-    async searchSymbols() {
-      if (this.searchTimeout) clearTimeout(this.searchTimeout);
-      if (!this.symbolSearch.trim()) {
-        this.symbolSearchResults = [];
-        return;
-      }
-      this.searchTimeout = setTimeout(async () => {
-        this.symbolSearchResults = await api.searchMarketSymbols(this.currentExchange._id, this.symbolSearch);
-      }, 300);
-    },
-    async addSymbol(sym) {
-      if (!this.currentExchange.symbols) this.currentExchange.symbols = [];
-      if (!this.currentExchange.symbols.includes(sym)) {
-        this.currentExchange.symbols.push(sym);
-        await api.saveSymbols(this.currentExchange._id, this.currentExchange.symbols);
-        this.symbolSearch = '';
-        this.symbolSearchResults = [];
-      }
-    },
-    async removeSymbol(sym) {
-      if (this.currentExchange.symbols) {
-        this.currentExchange.symbols = this.currentExchange.symbols.filter(s => s !== sym);
-        await api.saveSymbols(this.currentExchange._id, this.currentExchange.symbols);
-      }
-    },
-    async toggleEx(exId, enabled) {
-      await api.toggleExchange(exId, enabled);
-    }
-  },
-  async mounted() {
-    // Load exchanges for this account when page loads
-    if (store.currentAccountId) {
-      await api.loadExchangesForAccount(store.currentAccountId);
-    }
-  }
-};
-
-const SymbolsRoutingPage = {
-  template: `<div class="page-content">
-    <div class="section-title">Symbols & Routing</div>
-    <table class="routing-table">
-      <thead>
-        <tr><th>Exchange Account</th><th>Type</th><th>Environment</th><th>Symbols</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="ex in allExchanges" :key="ex._id">
-          <td>{{ ex._id }}</td>
-          <td>{{ ex.type.toUpperCase() }}</td>
-          <td>{{ ex.testnet ? 'Testnet' : (ex.paper_trading ? 'Paper' : 'Live') }}</td>
-          <td><span v-for="sym in (ex.symbols || [])" :key="sym" class="symbol-badge">{{ sym }}</span></td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-if="allExchanges.length === 0" class="empty-state">
-      <i class="fas fa-route"></i>
-      <p>No symbol routing configured yet</p>
-    </div>
-  </div>`,
-  computed: {
-    allExchanges() {
-      return Object.values(store.exchanges);
-    }
-  }
-};
-
-const TradingSettingsPage = {
-  template: `<div class="page-content">
-    <div class="section-title">Trading Settings</div>
-    <div style="max-width: 600px;">
-      <div class="form-group">
-        <label>Position Size</label>
-        <div style="display: flex; gap: 1rem; align-items: center;">
-          <input v-model.number="positionSize" type="range" min="5" max="100" style="flex: 1;">
-          <span style="min-width: 60px; font-weight: bold;">{{ positionSize }}%</span>
+  template: `
+    <div class="page">
+      <div class="page-head">
+        <h2>
+          <i class="fas fa-exchange-alt"></i>
+          Exchanges<span v-if="accountName"> — {{ accountName }}</span>
+        </h2>
+        <div style="display:flex;gap:8px">
+          <button class="btn" @click="navigate('accounts')">
+            <i class="fas fa-arrow-left"></i> Accounts
+          </button>
+          <button v-if="store.accountId" class="btn btn-primary"
+                  @click="showExchangeModal(null, store.accountId)">
+            <i class="fas fa-plus"></i> Add Exchange
+          </button>
         </div>
       </div>
-      <div class="form-group">
-        <label class="with-check">
-          <input v-model="usePercentage" type="checkbox">
-          Use Percentage (vs Fixed Amount)
-        </label>
+      <div v-if="!exchangeIds.length" class="empty-state">
+        <i class="fas fa-plug"></i>
+        <div class="empty-title">No exchanges yet</div>
+        <p>Add an exchange account to get started.</p>
       </div>
-      <div class="form-group">
-        <label class="with-check">
-          <input v-model="warnExisting" type="checkbox">
-          Warn if Position Exists
-        </label>
+      <div v-else class="exchange-grid">
+        <exchange-card v-for="id in exchangeIds" :key="id"
+                       :exchange-id="id"
+                       @configure="id => showExchangeModal(id)">
+        </exchange-card>
       </div>
-      <button class="btn btn-primary" @click="saveTradingSettings()">Save</button>
-    </div>
-  </div>`,
-  data() {
-    return {
-      positionSize: 20,
-      usePercentage: true,
-      warnExisting: true
-    };
-  },
-  mounted() {
-    this.positionSize = store.tradingSettings.position_size_percent || 20;
-    this.usePercentage = store.tradingSettings.use_percentage !== false;
-    this.warnExisting = store.tradingSettings.warn_existing_positions !== false;
-  },
-  methods: {
-    async saveTradingSettings() {
-      await api.saveTradingSettings({
-        position_size_percent: this.positionSize,
-        use_percentage: this.usePercentage,
-        warn_existing_positions: this.warnExisting
-      });
-    }
-  }
+    </div>`,
 };
 
-const RiskManagementPage = {
-  template: `<div class="page-content">
-    <div class="section-title">Risk Management</div>
-    <div style="max-width: 600px;">
-      <div class="form-group">
-        <label>Stop Loss %</label>
-        <input v-model.number="stopLoss" type="number" min="0.1" max="20" step="0.1">
-      </div>
-      <div class="alert alert-warning" style="margin: 2rem 0;">
-        <i class="fas fa-info-circle"></i> After TP1, stop-loss automatically moves to entry price
-      </div>
-      <div class="form-group">
-        <label>Take Profit Levels (read-only)</label>
-        <table class="plain-table" style="width: 100%; margin-top: 1rem;">
+/* ---- Symbols & Routing Page ---- */
+const SymbolsRoutingPage = {
+  computed: {
+    rows() {
+      return Object.entries(store.exchanges).map(([id, ex]) => {
+        const sym = ex.symbol ?? null;
+        const env  = ex.paper_trading ? 'Paper' : ex.testnet ? 'Testnet' : 'Live';
+        const type = (ex.type ?? id).toLowerCase();
+        return { id, type, env, sym };
+      });
+    },
+  },
+  template: `
+    <div class="page">
+      <div class="page-head"><h2><i class="fas fa-route"></i> Symbols &amp; Routing</h2></div>
+      <div class="table-wrap">
+        <table class="data-table">
           <thead>
-            <tr><th>Level</th><th>Profit %</th><th>Close %</th></tr>
+            <tr><th>Exchange Account</th><th>Type</th><th>Environment</th><th>Symbol</th></tr>
           </thead>
           <tbody>
-            <tr><td>TP1</td><td>1%</td><td>10%</td></tr>
-            <tr><td>TP2</td><td>2%</td><td>15%</td></tr>
-            <tr><td>TP3</td><td>5%</td><td>35%</td></tr>
-            <tr><td>TP4</td><td>6.5%</td><td>35%</td></tr>
-            <tr><td>TP5 (Runner)</td><td>Variable</td><td>5%</td></tr>
+            <tr v-if="!rows.length">
+              <td colspan="4" class="td-empty">No symbols configured yet</td>
+            </tr>
+            <tr v-for="(r, i) in rows" :key="i">
+              <td style="font-family:var(--mono);font-size:11px">{{ r.id }}</td>
+              <td><span :class="['badge', 'badge-' + r.type]">{{ r.type.toUpperCase() }}</span></td>
+              <td>{{ r.env }}</td>
+              <td>
+                <span v-if="r.sym" class="symbol-badge">{{ r.sym }}</span>
+                <span v-else class="text-muted" style="font-style:italic;font-size:11px">None configured</span>
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
-      <button class="btn btn-primary" @click="saveRiskManagement()">Save</button>
-    </div>
-  </div>`,
-  data() {
-    return {
-      stopLoss: 5.0
-    };
-  },
+    </div>`,
+};
+
+/* ---- Trading Settings Page ---- */
+const TradingSettingsPage = {
+  mixins: [mixin],
+  data: () => ({ size: 20, usePct: true, warnExisting: true, saving: false }),
   mounted() {
-    this.stopLoss = store.riskManagement.stop_loss_percent || 5.0;
-  },
-  methods: {
-    async saveRiskManagement() {
-      await api.saveRiskManagement({
-        stop_loss_percent: this.stopLoss
-      });
-    }
-  }
-};
-
-const ActivityPage = {
-  template: `<div class="page-content">
-    <div class="section-title">Activity & Logs</div>
-    <table class="signals-table">
-      <thead>
-        <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Price</th><th>Status</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="sig in store.signals.slice(0, 50)" :key="sig.id">
-          <td>{{ formatTime(sig.timestamp) }}</td>
-          <td><strong>{{ sig.symbol }}</strong></td>
-          <td><span :class="['sig-badge', sig.signal.toLowerCase()]">{{ sig.signal }}</span></td>
-          <td>{{ sig.price ? sig.price.toFixed(4) : '—' }}</td>
-          <td>✓ Received</td>
-        </tr>
-      </tbody>
-    </table>
-    <div v-if="store.signals.length === 0" class="empty-state">
-      <i class="fas fa-inbox"></i>
-      <p>No signals received</p>
-    </div>
-  </div>`
-};
-
-// ============================================================================
-// ROOT APP
-// ============================================================================
-
-const App = {
-  mixins: [componentMixin],
-  components: {
-    'stat-card': StatCard,
-    'exchange-type-icon': ExchangeTypeIcon,
-    'toggle': Toggle,
-    'account-modal': AccountModal,
-    'exchange-modal': ExchangeModal,
-    'overview-page': OverviewPage,
-    'accounts-page': AccountsPage,
-    'exchanges-page': ExchangesPage,
-    'symbols-routing-page': SymbolsRoutingPage,
-    'trading-settings-page': TradingSettingsPage,
-    'risk-management-page': RiskManagementPage,
-    'activity-page': ActivityPage
+    this.size        = store.settings.position_size_percent ?? 20;
+    this.usePct      = store.settings.use_percentage !== false;
+    this.warnExisting = store.settings.warn_existing_positions !== false;
   },
   template: `
-    <div class="dashboard-container">
-      <header class="dashboard-header">
-        <h1><i class="fas fa-chart-line"></i> Trading Bot</h1>
-        <div class="header-right">
-          <div class="status-indicator">
-            <span class="status-dot" :style="{background: isHealthy ? '#10b981' : '#ef4444'}"></span>
-            <span>{{ isHealthy ? 'Operational' : 'Offline' }}</span>
+    <div class="page">
+      <div class="page-head"><h2><i class="fas fa-sliders-h"></i> Trading Settings</h2></div>
+      <div class="settings-card">
+        <div class="field-group">
+          <label>Position Size — {{ size }}%</label>
+          <input v-model.number="size" type="range" min="5" max="100">
+          <div class="slider-labels"><span>5%</span><span>100%</span></div>
+        </div>
+        <label class="check-row">
+          <input v-model="usePct" type="checkbox">
+          Use percentage of balance (vs fixed amount)
+        </label>
+        <label class="check-row">
+          <input v-model="warnExisting" type="checkbox">
+          Warn when an open position already exists for the symbol
+        </label>
+        <div class="form-actions">
+          <button class="btn btn-primary" @click="save" :disabled="saving">
+            {{ saving ? 'Saving…' : 'Save Settings' }}
+          </button>
+        </div>
+      </div>
+    </div>`,
+  methods: {
+    async save() {
+      this.saving = true;
+      await api.saveSettings({
+        position_size_percent:    this.size,
+        use_percentage:           this.usePct,
+        warn_existing_positions:  this.warnExisting,
+      });
+      this.saving = false;
+    },
+  },
+};
+
+/* ---- Risk Management Page ---- */
+const RiskManagementPage = {
+  mixins: [mixin],
+  data: () => ({
+    stopLoss: 5.0,
+    saving: false,
+    tp1: 1.0,
+    tp2: 2.0,
+    tp3: 5.0,
+    tp4: 6.5,
+    tp5: 8.0,
+  }),
+  mounted() {
+    this.stopLoss = store.risk.stop_loss_percent ?? 5.0;
+    this.tp1 = store.risk.tp1_target ?? 1.0;
+    this.tp2 = store.risk.tp2_target ?? 2.0;
+    this.tp3 = store.risk.tp3_target ?? 5.0;
+    this.tp4 = store.risk.tp4_target ?? 6.5;
+    this.tp5 = store.risk.tp5_target ?? 8.0;
+  },
+  template: `
+    <div class="page">
+      <div class="page-head"><h2><i class="fas fa-shield-alt"></i> Risk Management</h2></div>
+      <div class="settings-card">
+        <div class="field-group">
+          <label>Stop Loss (%)</label>
+          <input v-model.number="stopLoss" type="number" min="0.1" max="20" step="0.1">
+        </div>
+
+        <div class="field-group">
+          <label>TP1: 1% (Close 10%)</label>
+          <input v-model.number="tp1" type="number" min="0.1" step="0.1">
+        </div>
+
+        <div class="field-group">
+          <label>TP2: 2% (Close 15%)</label>
+          <input v-model.number="tp2" type="number" min="0.1" step="0.1">
+        </div>
+
+        <div class="field-group">
+          <label>TP3: 5% (Close 35%)</label>
+          <input v-model.number="tp3" type="number" min="0.1" step="0.1">
+        </div>
+
+        <div class="field-group">
+          <label>TP4: 6.5% (Close 35%)</label>
+          <input v-model.number="tp4" type="number" min="0.1" step="0.1">
+        </div>
+
+        <div class="field-group">
+          <label>TP5: 8% (Close 50% of remaining)</label>
+          <input v-model.number="tp5" type="number" min="0.1" step="0.1">
+        </div>
+
+        <div class="alert alert-info">
+          <i class="fas fa-info-circle"></i>
+          Critical: After TP1, stop-loss will automatically move to entry price. This is a hard requirement.
+        </div>
+
+        <div class="form-actions">
+          <button class="btn btn-primary" @click="save" :disabled="saving">
+            {{ saving ? 'Saving…' : 'Save' }}
+          </button>
+        </div>
+      </div>
+    </div>`,
+  methods: {
+    async save() {
+      this.saving = true;
+      await api.saveRisk({
+        stop_loss_percent: this.stopLoss,
+        tp1_target: this.tp1,
+        tp2_target: this.tp2,
+        tp3_target: this.tp3,
+        tp4_target: this.tp4,
+        tp5_target: this.tp5,
+      });
+      this.saving = false;
+    },
+  },
+};
+
+/* ---- Activity Page ---- */
+const ActivityPage = {
+  mixins: [mixin],
+  data: () => ({
+    filterStatus: 'all',
+    filterSignal: 'all',
+    filterSymbol: '',
+    sortDesc: true,
+  }),
+  computed: {
+    filtered() {
+      let list = store.signals.slice();
+      if (this.filterStatus === 'executed') list = list.filter(s => s.executed);
+      if (this.filterStatus === 'failed')   list = list.filter(s => !s.executed && s.error);
+      if (this.filterStatus === 'pending')  list = list.filter(s => !s.executed && !s.error);
+      if (this.filterSignal !== 'all')      list = list.filter(s => (s.signal ?? '').toUpperCase() === this.filterSignal);
+      if (this.filterSymbol) {
+        const q = this.filterSymbol.toUpperCase();
+        list = list.filter(s => (s.symbol ?? '').toUpperCase().includes(q));
+      }
+      list.sort((a, b) => this.sortDesc
+        ? (b.timestamp ?? 0) - (a.timestamp ?? 0)
+        : (a.timestamp ?? 0) - (b.timestamp ?? 0));
+      return list;
+    },
+  },
+  template: `
+    <div class="page">
+      <div class="page-head"><h2><i class="fas fa-chart-bar"></i> Activity</h2></div>
+      <div class="filter-bar">
+        <div class="filter-field">
+          <label>Status</label>
+          <select v-model="filterStatus">
+            <option value="all">All</option>
+            <option value="executed">Executed</option>
+            <option value="failed">Failed</option>
+            <option value="pending">Pending</option>
+          </select>
+        </div>
+        <div class="filter-field">
+          <label>Signal</label>
+          <select v-model="filterSignal">
+            <option value="all">All</option>
+            <option value="BUY">BUY</option>
+            <option value="SELL">SELL</option>
+          </select>
+        </div>
+        <div class="filter-field filter-field--grow">
+          <label>Symbol</label>
+          <input v-model="filterSymbol" type="text" placeholder="Filter symbol…">
+        </div>
+        <div class="filter-field">
+          <label>Sort</label>
+          <select v-model="sortDesc">
+            <option :value="true">Newest first</option>
+            <option :value="false">Oldest first</option>
+          </select>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Price</th><th>Status</th><th>Detail</th></tr>
+          </thead>
+          <tbody>
+            <tr v-if="!filtered.length">
+              <td colspan="6" class="td-empty">No signals match your filters</td>
+            </tr>
+            <tr v-for="sig in filtered" :key="sig.id ?? sig.timestamp">
+              <td class="td-time">
+                {{ new Date(sig.datetime ?? sig.timestamp).toLocaleTimeString() }}
+                <br><span class="td-date">{{ new Date(sig.datetime ?? sig.timestamp).toLocaleDateString() }}</span>
+              </td>
+              <td><strong>{{ sig.symbol || '—' }}</strong></td>
+              <td><span :class="['sig-badge', (sig.signal || '').toLowerCase()]">{{ sig.signal || '—' }}</span></td>
+              <td style="font-family:var(--mono);font-size:11px">{{ sig.price ? sig.price.toFixed(2) : '—' }}</td>
+              <td>
+                <span :class="['sig-badge', sig.executed ? 'ok' : sig.error ? 'fail' : 'skip']">
+                  {{ sig.executed ? 'Executed' : sig.error ? 'Failed' : 'Pending' }}
+                </span>
+              </td>
+              <td class="td-detail">
+                <span v-if="sig.executed" class="clr-success">Order placed.</span>
+                <span v-else-if="sig.error" class="clr-error">{{ sig.error }}</span>
+                <span v-else class="text-muted">Pending…</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`,
+};
+
+/* ============================================================
+   ROOT APP
+   ============================================================ */
+
+const App = {
+  mixins: [mixin],
+  components: {
+    AccountModal, ExchangeModal,
+    OverviewPage, AccountsPage, ExchangesPage,
+    SymbolsRoutingPage, TradingSettingsPage, RiskManagementPage, ActivityPage,
+  },
+
+  /** provide modal openers via inject — no store.modals hacks */
+  provide() {
+    return {
+      showAccountModal:  (account)              => this.$refs.accountModal.show(account),
+      showExchangeModal: (exchangeId, accountId) => {
+        if (exchangeId) {
+          const ex = store.exchanges[exchangeId];
+          if (ex) this.$refs.exchangeModal.showEdit(ex);
+        } else {
+          this.$refs.exchangeModal.showCreate(accountId);
+        }
+      },
+    };
+  },
+
+  data: () => ({
+    navItems: [
+      { id: 'overview',        icon: 'fas fa-home',       label: 'Overview' },
+      { id: 'accounts',        icon: 'fas fa-user',       label: 'Accounts' },
+      { id: 'symbolsRouting',  icon: 'fas fa-route',      label: 'Symbols & Routing' },
+      { id: 'tradingSettings', icon: 'fas fa-sliders-h',  label: 'Trading Settings' },
+      { id: 'risk',            icon: 'fas fa-shield-alt', label: 'Risk Management' },
+      { id: 'activity',        icon: 'fas fa-chart-bar',  label: 'Activity' },
+    ],
+    _intervals: [],
+  }),
+
+  computed: {
+    enabledCount() { return Object.values(store.exchanges).filter(e => e.enabled !== false).length; },
+    totalCount()   { return Object.keys(store.exchanges).length; },
+    isHealthy()    { return this.enabledCount > 0; },
+    statusLabel()  {
+      if (this.enabledCount > 0) return `${this.enabledCount}/${this.totalCount} Active`;
+      return this.totalCount > 0 ? 'None Enabled' : 'No Exchanges';
+    },
+  },
+
+  template: `
+    <div class="shell">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <i class="fas fa-chart-line"></i> Trading Bot
+        </div>
+        <div class="topbar-right">
+          <span v-if="store.demoMode" class="demo-badge">DEMO</span>
+          <div class="status-pill" :class="isHealthy ? 'status-pill--on' : ''">
+            <span class="status-dot"></span>
+            {{ statusLabel }}
           </div>
         </div>
       </header>
-      <div class="dashboard-body">
-        <nav class="dashboard-sidebar">
-          <div class="sidebar-section-label">Navigation</div>
-          <button v-for="page in navPages" :key="page.id" :class="['sidebar-item', {active: store.currentPage === page.id}]" @click="pushRoute(page.id)">
-            <i :class="page.icon"></i><span>{{ page.label }}</span>
-          </button>
-          <div class="sidebar-divider"></div>
-          <div class="sidebar-section-label">Config</div>
-          <button :class="['sidebar-item', {active: store.currentPage === 'tradingSettings'}]" @click="pushRoute('tradingSettings')">
-            <i class="fas fa-sliders-h"></i><span>Trading Settings</span>
-          </button>
-          <button :class="['sidebar-item', {active: store.currentPage === 'risk'}]" @click="pushRoute('risk')">
-            <i class="fas fa-shield-alt"></i><span>Risk Management</span>
-          </button>
-          <div class="sidebar-divider"></div>
-          <button :class="['sidebar-item', {active: store.currentPage === 'activity'}]" @click="pushRoute('activity')">
-            <i class="fas fa-chart-bar"></i><span>Activity</span>
-          </button>
-        </nav>
-        <div class="dashboard-main">
-          <overview-page v-show="store.currentPage === 'overview'"></overview-page>
-          <accounts-page v-show="store.currentPage === 'accounts'"></accounts-page>
-          <exchanges-page v-show="store.currentPage === 'exchanges'"></exchanges-page>
-          <symbols-routing-page v-show="store.currentPage === 'symbolsRouting'"></symbols-routing-page>
-          <trading-settings-page v-show="store.currentPage === 'tradingSettings'"></trading-settings-page>
-          <risk-management-page v-show="store.currentPage === 'risk'"></risk-management-page>
-          <activity-page v-show="store.currentPage === 'activity'"></activity-page>
+
+      <nav class="sidebar">
+        <div class="sidebar-label">Navigation</div>
+        <button v-for="item in navItems" :key="item.id"
+                :class="['sidebar-btn', store.page === item.id ? 'sidebar-btn--active' : '']"
+                @click="navigate(item.id)">
+          <i :class="item.icon"></i>
+          <span>{{ item.label }}</span>
+        </button>
+      </nav>
+
+      <main class="main-content">
+        <div v-if="store.loading" class="loading-overlay">
+          <i class="fas fa-spinner fa-spin"></i> Loading…
         </div>
-      </div>
-      <account-modal ref="accountModal"></account-modal>
+        <template v-else>
+          <overview-page         v-show="store.page === 'overview'"></overview-page>
+          <accounts-page         v-show="store.page === 'accounts'"></accounts-page>
+          <exchanges-page        v-show="store.page === 'exchanges'"></exchanges-page>
+          <symbols-routing-page  v-show="store.page === 'symbolsRouting'"></symbols-routing-page>
+          <trading-settings-page v-show="store.page === 'tradingSettings'"></trading-settings-page>
+          <risk-management-page  v-show="store.page === 'risk'"></risk-management-page>
+          <activity-page         v-show="store.page === 'activity'"></activity-page>
+        </template>
+      </main>
+
+      <account-modal  ref="accountModal"></account-modal>
       <exchange-modal ref="exchangeModal"></exchange-modal>
-      <div v-if="store.toast.visible" class="toast" :class="'toast-' + store.toast.type">{{ store.toast.message }}</div>
-    </div>
-  `,
-  data() {
-    return {
-      navPages: [
-        { id: 'overview', label: 'Overview', icon: 'fas fa-home' },
-        { id: 'accounts', label: 'Accounts', icon: 'fas fa-user' },
-        { id: 'symbolsRouting', label: 'Symbols & Routing', icon: 'fas fa-route' }
-      ]
-    };
-  },
-  computed: {
-    isHealthy() {
-      return store.status && store.status.connected;
-    }
-  },
+
+      <transition name="toast">
+        <div v-if="store.toast.visible" :class="['toast', 'toast--' + store.toast.type]">
+          {{ store.toast.msg }}
+        </div>
+      </transition>
+    </div>`,
+
   async mounted() {
-    // Load all data
-    store.loading = true;
-    const { page, accountId } = restoreFromURL();
+    /* Restore page from URL */
+    const { page, accountId } = parsePath(location.pathname);
+    navigate(page, accountId, true);
 
-    // Set page and accountId immediately so components can use them
-    store.currentPage = page;
-    store.currentAccountId = accountId;
-
-    const loadPromises = [
+    /* Initial data load — parallel where possible */
+    await Promise.all([
       api.loadAccounts(),
-      api.loadTradingSettings(),
-      api.loadRiskManagement(),
+      api.loadSettings(),
       api.loadSignals(),
       api.loadStatus(),
-      api.loadExchangeStatus()
-    ];
+      api.loadExStatus(),
+    ]);
 
-    // Load exchanges only if viewing exchanges page
+    /* Load exchanges for every account */
+    await api.loadAllExchanges();
+
+    /* If opened directly on exchanges page, load that account's data */
     if (page === 'exchanges' && accountId) {
-      loadPromises.push(api.loadExchangesForAccount(accountId));
+      await api.loadExchangesForAccount(accountId);
     }
 
-    await Promise.all(loadPromises);
     store.loading = false;
 
-    const urlPath = pageToPath(store.currentPage, store.currentAccountId);
-    history.replaceState({ page: store.currentPage, accountId: store.currentAccountId }, '', urlPath);
+    /* Polling — stored so we can clear them on unmount */
+    this._intervals = [
+      setInterval(() => api.loadSignals(),  10_000),
+      setInterval(() => api.loadStatus(),   10_000),
+      setInterval(() => api.loadExStatus(), 30_000),
+      setInterval(() => api.loadDemoData(), 10_000),
+    ];
+  },
 
-    // Refresh signals every 10s, exchange status every 30s
-    setInterval(() => api.loadSignals(), 10000);
-    setInterval(() => api.loadExchangeStatus(), 30000);
-    setInterval(() => api.loadStatus(), 5000);
-  }
+  unmounted() {
+    /* Always clean up intervals */
+    this._intervals.forEach(clearInterval);
+  },
 };
 
-// ============================================================================
-// BOOT
-// ============================================================================
+/* ============================================================
+   BOOT
+   ============================================================ */
 
 document.addEventListener('DOMContentLoaded', () => {
-  const app = createApp(App);
-
-  // Global properties
-  app.config.globalProperties.$formatTime = formatTime;
-  app.config.globalProperties.$escapeHtml = escapeHtml;
-  app.config.globalProperties.$showToast = showToast;
-  app.config.globalProperties.pushRoute = pushRoute;
-  app.config.globalProperties.store = store;
-  app.config.globalProperties.api = api;
-  app.config.globalProperties.formatTime = formatTime;
-
-  // Register components globally
-  app.component('stat-card', StatCard);
-  app.component('exchange-type-icon', ExchangeTypeIcon);
-  app.component('toggle', Toggle);
-  app.component('badge', Badge);
-  app.component('account-modal', AccountModal);
-  app.component('exchange-modal', ExchangeModal);
-  app.component('overview-page', OverviewPage);
-  app.component('accounts-page', AccountsPage);
-  app.component('exchanges-page', ExchangesPage);
-  app.component('symbols-routing-page', SymbolsRoutingPage);
-  app.component('trading-settings-page', TradingSettingsPage);
-  app.component('risk-management-page', RiskManagementPage);
-  app.component('activity-page', ActivityPage);
-
-  app.mount('#app');
-  console.log('✅ Vue app mounted with all components');
+  createApp(App).mount('#app');
+  console.log('✅ Trading Bot Dashboard mounted');
 });

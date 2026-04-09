@@ -435,9 +435,10 @@ class Dashboard:
 
         @self.app.route('/api/exchanges/<exchange_name>/symbols', methods=['GET', 'POST'])
         def manage_exchange_symbols(exchange_name):
-            """Get or update allowed symbols for a specific exchange.
-            GET: Returns { "symbols": [...] }
-            POST: Accepts { "symbols": [...] } and replaces the list.
+            """Get or update symbol for a specific exchange.
+            Each exchange can have max 1 symbol.
+            GET: Returns { "symbol": "BTC" } or { "symbol": null }
+            POST: Accepts { "symbol": "BTC" } and replaces it.
             """
             try:
                 from mongo_db import get_db
@@ -446,29 +447,28 @@ class Dashboard:
                 if not doc:
                     return jsonify({'error': 'Exchange not found'}), 404
                 if request.method == 'GET':
-                    symbols = doc.get('symbols') or ([doc.get('symbol')] if doc.get('symbol') else [])
+                    symbol = doc.get('symbol') or None
                     return jsonify({
                         'exchange': exchange_name,
                         'name': doc.get('type', exchange_name),
-                        'symbols': [str(s) for s in symbols if s]
+                        'symbol': str(symbol).upper() if symbol else None
                     })
                 data = request.get_json() or {}
-                raw = data.get('symbols', [])
-                if not isinstance(raw, list):
-                    return jsonify({'error': 'symbols must be a list of strings'}), 400
-                normalized = []
-                seen = set()
-                for sym in raw:
-                    if not isinstance(sym, str):
-                        continue
-                    clean = sym.strip().upper()
-                    if not clean or clean in seen:
-                        continue
-                    normalized.append(clean)
-                    seen.add(clean)
-                db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'symbols': normalized}})
-                logger.info(f"✅ Updated symbols for {exchange_name} in Mongo: {normalized}")
-                return jsonify({'status': 'success', 'symbols': normalized})
+                raw = data.get('symbol')
+                if raw is None:
+                    # Clear symbol
+                    db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'symbol': None}})
+                    logger.info(f"✅ Cleared symbol for {exchange_name}")
+                    return jsonify({'status': 'success', 'symbol': None})
+                if not isinstance(raw, str):
+                    return jsonify({'error': 'symbol must be a string'}), 400
+                clean = raw.strip().upper()
+                if not clean:
+                    db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'symbol': None}})
+                    return jsonify({'status': 'success', 'symbol': None})
+                db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'symbol': clean}})
+                logger.info(f"✅ Updated symbol for {exchange_name}: {clean}")
+                return jsonify({'status': 'success', 'symbol': clean})
             except Exception as e:
                 logger.warning(f"symbols operation failed: {e}")
                 return jsonify({'error': 'Failed to manage symbols'}), 500
@@ -534,11 +534,16 @@ class Dashboard:
                 from mongo_db import get_db
                 db = get_db()
                 update = {}
-                allowed = {'stop_loss_percent', 'take_profit_percent', 'position_size_percent', 'use_percentage', 'warn_existing_positions', 'overrides'}
+                allowed = {
+                    'stop_loss_percent', 'take_profit_percent', 'position_size_percent',
+                    'use_percentage', 'warn_existing_positions', 'overrides',
+                    'tp1_target', 'tp2_target', 'tp3_target', 'tp4_target', 'tp5_target'
+                }
                 for key, value in data.items():
                     if key not in allowed:
                         continue
-                    if key in {'stop_loss_percent', 'take_profit_percent', 'position_size_percent'}:
+                    if key in {'stop_loss_percent', 'take_profit_percent', 'position_size_percent',
+                               'tp1_target', 'tp2_target', 'tp3_target', 'tp4_target', 'tp5_target'}:
                         try:
                             update[key] = float(value)
                         except Exception:
