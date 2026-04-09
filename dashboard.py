@@ -86,7 +86,8 @@ class Dashboard:
         return []
 
     def _fetch_bybit_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        base_url = exchange.get('base_url', 'https://api.bybit.com').rstrip('/')
+        base_url = exchange.get('base_url') or 'https://api.bybit.com'
+        base_url = base_url.rstrip('/')
         if exchange.get('testnet'):
             base_url = 'https://api-testnet.bybit.com'
         mode = (exchange.get('trading_mode') or 'spot').lower()
@@ -159,7 +160,8 @@ class Dashboard:
         return self._filter_symbols(symbols, query, limit)
 
     def _fetch_mexc_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        base_url = exchange.get('base_url', 'https://api.mexc.com').rstrip('/')
+        base_url = exchange.get('base_url') or 'https://api.mexc.com'
+        base_url = base_url.rstrip('/')
         resp = requests.get(f"{base_url}/api/v3/exchangeInfo", timeout=10)
         if resp.status_code != 200:
             return []
@@ -171,7 +173,8 @@ class Dashboard:
         return self._filter_symbols([s for s in symbols if s], query, limit)
 
     def _fetch_alpaca_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        base_url = exchange.get('base_url', 'https://paper-api.alpaca.markets').rstrip('/')
+        base_url = exchange.get('base_url') or 'https://paper-api.alpaca.markets'
+        base_url = base_url.rstrip('/')
         api_key = exchange.get('api_key', '')
         api_secret = exchange.get('api_secret', '')
         if not api_key or not api_secret or api_secret == '***':
@@ -479,7 +482,7 @@ class Dashboard:
                     logger.warning(f"Document keys: {list(doc.keys())}")
                     return jsonify({'error': 'Exchange type not configured'}), 400
                 exchange = {
-                    'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url', ''),
+                    'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url') or '',
                     'testnet': doc.get('testnet', False),
                     'trading_mode': doc.get('trading_mode', 'spot'),
                     'api_key': '', 'api_secret': '',
