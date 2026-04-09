@@ -808,23 +808,30 @@ class Dashboard:
                     validation = client.validate_connection()
                 elif exchange_type == 'ibkr':
                     from ibkr_client import IBKRClient
-                    ibkr_base = (base_url or 'https://localhost:5000').rstrip('/')
-                    client = IBKRClient(api_key=api_key or '', api_secret=api_secret or '',
-                                        base_url=ibkr_base,
-                                        account_id=data.get('account_id') or exchange.get('account_id', ''),
-                                        use_paper=data.get('use_paper') if 'use_paper' in data else exchange.get('use_paper', False),
-                                        leverage=int(data.get('leverage') or exchange.get('leverage', 1)))
-                    validation = client.validate_connection()
+                    # For IBKR, we use Gateway/TWS connection instead of REST API
+                    gateway_host = data.get('gateway_host') or exchange.get('gateway_host') or '127.0.0.1'
+                    gateway_port = int(data.get('gateway_port') or exchange.get('gateway_port') or 7497)
+                    client_id = int(data.get('client_id') or exchange.get('client_id') or 1)
+                    client = IBKRClient(host=gateway_host, port=gateway_port, client_id=client_id)
+                    validation = client.test_connection()
                 else:
                     return jsonify({'error': 'Exchange not supported'}), 400
 
-                if validation['connected']:
-                    return jsonify({
+                if validation.get('connected'):
+                    result = {
                         'status': 'success',
-                        'message': 'Connection successful',
-                        'can_trade': validation['can_trade'],
-                        'balances': client.get_main_balances()
-                    })
+                        'message': 'Connection successful'
+                    }
+                    # Include IBKR-specific data
+                    if exchange_type == 'ibkr':
+                        result['account_id'] = validation.get('account_id', 'Unknown')
+                        result['balance'] = validation.get('balance', 0)
+                        result['buying_power'] = validation.get('buying_power', 0)
+                        result['open_positions'] = validation.get('open_positions', 0)
+                    # Include balances for other exchanges
+                    elif hasattr(client, 'get_main_balances'):
+                        result['balances'] = client.get_main_balances()
+                    return jsonify(result)
                 else:
                     return jsonify({'status': 'error', 'error': validation.get('error', 'Connection failed')}), 500
 

@@ -26,7 +26,7 @@ const BASE_URL_DEFAULTS = {
   bybit:  'https://api.bybit.com',
   mexc:   'https://api.mexc.com',
   alpaca: 'https://paper-api.alpaca.markets',
-  ibkr:   'https://localhost:5000',
+  ibkr:   '', // Not used for IBKR (uses Gateway/TWS direct connection)
 };
 
 /* ============================================================
@@ -584,17 +584,22 @@ const ExchangeModal = {
               <template v-if="isIbkr">
                 <div class="field-row">
                   <div class="field-group">
-                    <label>Gateway URL</label>
-                    <input v-model.trim="form.base_url" type="text" placeholder="https://localhost:5000">
+                    <label>Gateway Host</label>
+                    <input v-model.trim="form.gateway_host" type="text" placeholder="127.0.0.1">
                   </div>
-                  <div class="field-group" style="max-width:110px">
-                    <label>Leverage</label>
-                    <input v-model.number="form.leverage" type="number" min="1" max="100">
+                  <div class="field-group" style="max-width:130px">
+                    <label>Gateway Port</label>
+                    <input v-model.number="form.gateway_port" type="number" min="1" max="65535" placeholder="7497">
+                  </div>
+                  <div class="field-group" style="max-width:100px">
+                    <label>Client ID</label>
+                    <input v-model.number="form.client_id" type="number" min="1" max="999" placeholder="1">
                   </div>
                 </div>
-                <button class="btn btn-ghost" type="button" @click="openGateway">
-                  <i class="fas fa-external-link-alt"></i> Open Gateway Login
-                </button>
+                <p style="color: var(--text-2); font-size: 12px; margin: 8px 0;">
+                  <i class="fas fa-info-circle"></i>
+                  Use port <strong>7497</strong> for paper trading, <strong>7496</strong> for live trading.
+                </p>
               </template>
 
             </div>
@@ -619,7 +624,8 @@ const ExchangeModal = {
         symbolQuery: '', symbolResults: [],
         form: { enabled: true, api_key: '', api_secret: '', base_url: '',
                 trading_mode: 'spot', leverage: 1, paper_trading: false,
-                use_sub_account: false, sub_account_id: '', proxy: '', symbol: null },
+                use_sub_account: false, sub_account_id: '', proxy: '', symbol: null,
+                gateway_host: '127.0.0.1', gateway_port: 7497, client_id: 1 },
       });
       this.open = true;
     },
@@ -644,6 +650,9 @@ const ExchangeModal = {
           sub_account_id:  exchange.sub_account_id ?? '',
           proxy:           exchange.proxy ?? '',
           symbol:          exchange.symbol ?? null,
+          gateway_host:    exchange.gateway_host ?? '127.0.0.1',
+          gateway_port:    exchange.gateway_port ?? 7497,
+          client_id:       exchange.client_id ?? 1,
         },
       });
       this.open = true;
@@ -661,7 +670,7 @@ const ExchangeModal = {
       if (this.isBybit)  { p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
       if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
       if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
-      if (this.isIbkr)   { p.leverage = this.form.leverage; }
+      if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = this.form.gateway_port; p.client_id = this.form.client_id; }
       return p;
     },
     async onSymbolSearch() {
@@ -689,11 +698,6 @@ const ExchangeModal = {
       }
       this.saving = false;
       if (ok) this.close();
-    },
-    openGateway() {
-      const url = (this.form.base_url || 'https://localhost:5000').replace(/\/$/, '');
-      window.open(url + '/', '_blank', 'noopener,noreferrer');
-      toast('Sign in to IBKR, then click Test Connection.', 'success');
     },
   },
 };

@@ -4,7 +4,11 @@ Async-ready client for connecting to IBKR TWS/Gateway
 """
 import asyncio
 import logging
+import nest_asyncio
 from ib_insync import *
+
+# Allow nested event loops in threads (for Flask integration)
+nest_asyncio.apply()
 
 logger = logging.getLogger(__name__)
 
@@ -183,11 +187,14 @@ class IBKRClient:
             logger.error(f"Error placing limit order: {e}")
             return None
 
-    async def test_connection(self):
-        """Test IBKR connection and return status"""
+    async def test_connection_async(self):
+        """Test IBKR connection and return status (async version)"""
         try:
             if not await self.connect():
-                return False
+                return {
+                    'connected': False,
+                    'error': 'Failed to connect to Gateway/TWS'
+                }
 
             await asyncio.sleep(0.5)
 
@@ -201,11 +208,37 @@ class IBKRClient:
                 logger.info(f"   Buying Power: ${summary['buying_power']:,.2f}")
             logger.info(f"   Open Positions: {len(positions)}")
 
+            result = {
+                'connected': True,
+                'account_id': self.account,
+                'balance': summary['balance'] if summary else 0,
+                'buying_power': summary['buying_power'] if summary else 0,
+                'open_positions': len(positions)
+            }
+
             await self.disconnect()
-            return True
+            return result
         except Exception as e:
             logger.error(f"Connection test failed: {e}")
-            return False
+            return {
+                'connected': False,
+                'error': str(e)
+            }
+
+    def test_connection(self):
+        """Synchronous wrapper for test_connection_async (for Flask)
+
+        nest_asyncio.apply() is called at module load, allowing nested event loops in threads
+        """
+        try:
+            result = asyncio.run(self.test_connection_async())
+            return result
+        except Exception as e:
+            logger.error(f"test_connection failed: {e}", exc_info=True)
+            return {
+                'connected': False,
+                'error': str(e)
+            }
 
 
 # Test script
