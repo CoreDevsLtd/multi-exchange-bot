@@ -961,7 +961,157 @@ class Dashboard:
             
             # Fallback if signal_monitor not available
             return jsonify({'signals': []}), 200
-    
+
+        @self.app.route('/api/ibkr/setup', methods=['POST'])
+        def ibkr_setup():
+            """Start an ibeam Docker container for an IBKR account"""
+            import docker
+            from datetime import datetime
+
+            data = request.get_json() or {}
+            exchange_id = data.get('exchange_id')
+            ibkr_user = data.get('ibkr_user', '').strip()
+            ibkr_pass = data.get('ibkr_pass', '').strip()
+            paper_trading = bool(data.get('paper_trading', True))
+
+            if not exchange_id or not ibkr_user or not ibkr_pass:
+                return jsonify({'error': 'Missing exchange_id, ibkr_user, or ibkr_pass'}), 400
+
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                # Check if container already exists for this exchange
+                existing = db.ibkr_containers.find_one({'exchange_id': exchange_id})
+                if existing and existing.get('status') == 'running':
+                    return jsonify({'port': existing['port'], 'container_name': existing['container_name'], 'status': 'running'}), 200
+
+                # Find next available port
+                IBKR_PORT_START = 7497
+                used_ports = {doc['port'] for doc in db.ibkr_containers.find({}, {'port': 1})}
+                port = IBKR_PORT_START
+                while port in used_ports:
+                    port += 1
+
+                # Build container name: ibeam-{exchange_id}-{paper/live}
+                container_name = f"ibeam-{exchange_id.replace('_', '-')}"
+
+                # Start Docker container
+                client = docker.from_env()
+                try:
+                    container = client.containers.run(
+                        'voyz/ibeam:latest',
+                        detach=True,
+                        name=container_name,
+                        ports={7497: port},
+                        environment={
+                            'IBKR_USER': ibkr_user,
+                            'IBKR_PASS': ibkr_pass
+                        },
+                        restart_policy={'Name': 'unless-stopped'},
+                        remove=False
+                    )
+                    logger.info(f"Started ibeam container {container_name} on port {port}")
+                except docker.errors.APIError as e:
+                    if 'already exists' in str(e):
+                        # Container exists but stopped, start it
+                        container = client.containers.get(container_name)
+                        container.start()
+                    else:
+                        raise
+
+                # Store in MongoDB
+                doc_id = f"ibeam-{exchange_id}"
+                db.ibkr_containers.update_one(
+                    {'_id': doc_id},
+                    {'$set': {
+                        '_id': doc_id,
+                        'exchange_id': exchange_id,
+                        'container_name': container_name,
+                        'port': port,
+                        'paper_trading': paper_trading,
+                        'status': 'running',
+                        'created_at': datetime.utcnow().isoformat()
+                    }},
+                    upsert=True
+                )
+
+                return jsonify({'port': port, 'container_name': container_name, 'status': 'running'}), 201
+            except Exception as e:
+                logger.error(f"Error setting up ibeam container: {e}", exc_info=True)
+                return jsonify({'error': f'Failed to start ibeam container: {str(e)}'}), 500
+
+        @self.app.route('/api/ibkr/status/<exchange_id>', methods=['GET'])
+        def ibkr_status(exchange_id):
+            """Check if ibeam container is running for an IBKR exchange"""
+            import docker
+
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                container_doc = db.ibkr_containers.find_one({'exchange_id': exchange_id})
+                if not container_doc:
+                    return jsonify({'running': False, 'port': None, 'container_name': None}), 200
+
+                container_name = container_doc.get('container_name')
+                port = container_doc.get('port')
+
+                # Check actual Docker status
+                try:
+                    client = docker.from_env()
+                    container = client.containers.get(container_name)
+                    is_running = container.status == 'running'
+
+                    if is_running:
+                        db.ibkr_containers.update_one(
+                            {'_id': container_doc['_id']},
+                            {'$set': {'status': 'running'}}
+                        )
+                    return jsonify({'running': is_running, 'port': port, 'container_name': container_name}), 200
+                except docker.errors.NotFound:
+                    db.ibkr_containers.update_one(
+                        {'_id': container_doc['_id']},
+                        {'$set': {'status': 'stopped'}}
+                    )
+                    return jsonify({'running': False, 'port': None, 'container_name': container_name}), 200
+            except Exception as e:
+                logger.error(f"Error checking ibeam status: {e}")
+                return jsonify({'error': 'Failed to check container status'}), 500
+
+        @self.app.route('/api/ibkr/stop/<exchange_id>', methods=['DELETE'])
+        def ibkr_stop(exchange_id):
+            """Stop and remove ibeam Docker container for an IBKR exchange"""
+            import docker
+
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                container_doc = db.ibkr_containers.find_one({'exchange_id': exchange_id})
+                if not container_doc:
+                    return jsonify({'error': 'Container not found in database'}), 404
+
+                container_name = container_doc.get('container_name')
+
+                # Stop and remove container
+                try:
+                    client = docker.from_env()
+                    container = client.containers.get(container_name)
+                    container.stop(timeout=10)
+                    container.remove()
+                    logger.info(f"Stopped and removed ibeam container {container_name}")
+                except docker.errors.NotFound:
+                    logger.warning(f"Container {container_name} not found in Docker")
+
+                # Remove from MongoDB
+                db.ibkr_containers.delete_one({'_id': container_doc['_id']})
+
+                return jsonify({'status': 'stopped'}), 200
+            except Exception as e:
+                logger.error(f"Error stopping ibeam container: {e}", exc_info=True)
+                return jsonify({'error': f'Failed to stop container: {str(e)}'}), 500
+
     def run(self, host: str = '0.0.0.0', port: int = 8080, debug: bool = False):
         """
         Run the dashboard server

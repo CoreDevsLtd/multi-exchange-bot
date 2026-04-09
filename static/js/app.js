@@ -163,6 +163,39 @@ const api = {
     return r;
   },
 
+  /* --- IBKR ibeam Container Management --- */
+  async ibkrSetup(exchangeId, user, pass, paper) {
+    const r = await api.post('/api/ibkr/setup', {
+      exchange_id: exchangeId,
+      ibkr_user: user,
+      ibkr_pass: pass,
+      paper_trading: paper
+    }).catch(() => null);
+    if (r?.port) {
+      toast(`ibeam container started on port ${r.port}`, 'success');
+      return r;
+    } else {
+      toast(r?.error ?? 'Failed to start ibeam container', 'error');
+      return null;
+    }
+  },
+
+  async ibkrStop(exchangeId) {
+    const r = await api._req('DELETE', `/api/ibkr/stop/${exchangeId}`).catch(() => null);
+    if (r?.status === 'stopped') {
+      toast('ibeam container stopped', 'success');
+      return true;
+    } else {
+      toast(r?.error ?? 'Failed to stop container', 'error');
+      return false;
+    }
+  },
+
+  async ibkrContainerStatus(exchangeId) {
+    const r = await api.get(`/api/ibkr/status/${exchangeId}`).catch(() => null);
+    return r;
+  },
+
   /* --- Symbols (single symbol per exchange) --- */
   async loadSymbols(id) {
     const d = await api.get(`/api/exchanges/${id}/symbols`).catch(() => null);
@@ -421,6 +454,10 @@ const ExchangeModal = {
     symbolResults: [],
     symbolQuery: '',
     symbolTimer: null,
+    ibkrUser: '',
+    ibkrPass: '',
+    ibkrSetting: false,
+    ibkrContainerRunning: false,
   }),
   computed: {
     isIbkr()          { return this.type === 'ibkr'; },
@@ -586,24 +623,47 @@ const ExchangeModal = {
                   <input v-model="form.paper_trading" type="checkbox"> Paper Trading (Demo Account)
                 </label>
 
-                <div class="field-row">
-                  <div class="field-group">
-                    <label>Gateway Host</label>
-                    <input v-model.trim="form.gateway_host" type="text" placeholder="127.0.0.1">
-                  </div>
-                  <div class="field-group" style="max-width:130px">
-                    <label>Gateway Port</label>
-                    <input v-model.number="form.gateway_port" type="number" min="1" max="65535" :placeholder="form.paper_trading ? '7497' : '7496'">
-                  </div>
-                  <div class="field-group" style="max-width:100px">
-                    <label>Client ID</label>
-                    <input v-model.number="form.client_id" type="number" min="1" max="999" placeholder="1">
-                  </div>
+                <!-- ibeam Setup Section -->
+                <div v-if="!ibkrContainerRunning" class="field-group">
+                  <label>IBKR Username</label>
+                  <input v-model.trim="ibkrUser" type="text" placeholder="your@ibkr.com">
                 </div>
-                <p style="color: var(--text-2); font-size: 12px; margin: 8px 0;">
-                  <i class="fas fa-info-circle"></i>
-                  Paper: port <strong>7497</strong> | Live: port <strong>7496</strong>
-                </p>
+                <div v-if="!ibkrContainerRunning" class="field-group">
+                  <label>IBKR Password</label>
+                  <input v-model="ibkrPass" type="password" placeholder="••••••••">
+                </div>
+
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
+                  <button v-if="!ibkrContainerRunning" class="btn btn-primary" type="button"
+                          @click="setupIbeam" :disabled="ibkrSetting">
+                    <i class="fas fa-play"></i> {{ ibkrSetting ? 'Starting…' : 'Start ibeam' }}
+                  </button>
+                  <button v-if="ibkrContainerRunning" class="btn btn-danger" type="button"
+                          @click="stopIbeam" :disabled="ibkrSetting">
+                    <i class="fas fa-stop"></i> {{ ibkrSetting ? 'Stopping…' : 'Stop Container' }}
+                  </button>
+                  <span v-if="ibkrContainerRunning" style="color:#4ade80;font-size:13px;display:flex;align-items:center;gap:6px">
+                    <i class="fas fa-circle"></i> Running on port {{ form.gateway_port }}
+                  </span>
+                </div>
+
+                <!-- Gateway config (shown only when container is running) -->
+                <template v-if="ibkrContainerRunning">
+                  <div class="field-row">
+                    <div class="field-group">
+                      <label>Gateway Host</label>
+                      <input v-model.trim="form.gateway_host" type="text" placeholder="127.0.0.1">
+                    </div>
+                    <div class="field-group" style="max-width:130px">
+                      <label>Gateway Port</label>
+                      <input v-model.number="form.gateway_port" type="number" disabled>
+                    </div>
+                    <div class="field-group" style="max-width:100px">
+                      <label>Client ID</label>
+                      <input v-model.number="form.client_id" type="number" min="1" max="999" placeholder="1">
+                    </div>
+                  </div>
+                </template>
               </template>
 
             </div>
@@ -660,6 +720,13 @@ const ExchangeModal = {
           paper_trading:   exchange.paper_trading !== false,
         },
       });
+      // Check if IBKR container is running
+      if (this.type === 'ibkr') {
+        api.ibkrContainerStatus(exchange._id).then(status => {
+          this.ibkrContainerRunning = status?.running ?? false;
+          if (status?.port) this.form.gateway_port = status.port;
+        });
+      }
       this.open = true;
     },
     close() { this.open = false; },
@@ -690,6 +757,33 @@ const ExchangeModal = {
       const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
       await api.testConnection(id, this.payload());
       this.testing = false;
+    },
+    async setupIbeam() {
+      if (!this.ibkrUser.trim() || !this.ibkrPass.trim()) {
+        toast('Enter IBKR username and password', 'error');
+        return;
+      }
+      this.ibkrSetting = true;
+      const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
+      const res = await api.ibkrSetup(id, this.ibkrUser, this.ibkrPass, this.form.paper_trading);
+      if (res?.port) {
+        this.form.gateway_port = res.port;
+        this.form.gateway_host = '127.0.0.1';
+        this.ibkrContainerRunning = true;
+        this.ibkrUser = '';
+        this.ibkrPass = '';
+      }
+      this.ibkrSetting = false;
+    },
+    async stopIbeam() {
+      this.ibkrSetting = true;
+      const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
+      const ok = await api.ibkrStop(id);
+      if (ok) {
+        this.ibkrContainerRunning = false;
+        this.form.gateway_port = this.form.paper_trading ? 7497 : 7496;
+      }
+      this.ibkrSetting = false;
     },
     async save() {
       this.saving = true;
