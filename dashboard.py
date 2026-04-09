@@ -95,25 +95,32 @@ class Dashboard:
         symbols = []
         seen = set()
 
+        logger.debug(f"_fetch_bybit_symbols: base_url={base_url}, mode={mode}, category={category}")
+
         # Spot does not support pagination parameters (cursor/limit) on this endpoint.
         if category == 'spot':
-            resp = requests.get(url, params={'category': category}, timeout=10)
-            if resp.status_code != 200:
-                logger.warning(f"Bybit market API returned {resp.status_code}: {resp.text[:200]}")
+            try:
+                resp = requests.get(url, params={'category': category}, timeout=10)
+                logger.debug(f"Bybit API status: {resp.status_code}")
+                if resp.status_code != 200:
+                    logger.warning(f"❌ Bybit market API returned {resp.status_code}: {resp.text[:200]}")
+                    return []
+                data = resp.json()
+                if data.get('retCode') != 0:
+                    logger.warning(f"❌ Bybit API error: {data.get('retMsg', 'unknown error')}")
+                    return []
+                items = data.get('result', {}).get('list', [])
+                logger.debug(f"✅ Bybit API returned {len(items)} total symbols (spot category)")
+                for item in items:
+                    sym = item.get('symbol', '')
+                    if sym and item.get('status') == 'Trading' and sym not in seen:
+                        symbols.append(sym)
+                        seen.add(sym)
+                logger.debug(f"Collected {len(symbols)} trading symbols, applying query filter")
+                return self._filter_symbols(symbols, query, limit)
+            except Exception as e:
+                logger.error(f"❌ Error fetching Bybit symbols: {e}", exc_info=True)
                 return []
-            data = resp.json()
-            if data.get('retCode') != 0:
-                logger.warning(f"Bybit API error: {data.get('retMsg', 'unknown error')}")
-                return []
-            items = data.get('result', {}).get('list', [])
-            logger.debug(f"Bybit API returned {len(items)} total symbols (spot category)")
-            for item in items:
-                sym = item.get('symbol', '')
-                if sym and item.get('status') == 'Trading' and sym not in seen:
-                    symbols.append(sym)
-                    seen.add(sym)
-            logger.debug(f"Filtered to {len(symbols)} trading symbols, query='{query}'")
-            return self._filter_symbols(symbols, query, limit)
 
         # Linear/Inverse/Option can exceed 500 symbols; paginate to avoid missing pairs.
         cursor = None
@@ -188,10 +195,15 @@ class Dashboard:
         return self._filter_symbols([s for s in symbols if s], query, limit)
 
     def _filter_symbols(self, symbols: list, query: str, limit: int) -> list:
+        logger.debug(f"_filter_symbols: input={len(symbols)} symbols, query='{query}', limit={limit}")
         if query:
             q = query.upper()
+            before = len(symbols)
             symbols = [s for s in symbols if q in s.upper()]
-        return symbols[:limit]
+            logger.debug(f"  After query filter: {len(symbols)} symbols (was {before})")
+        result = symbols[:limit]
+        logger.debug(f"  Final result: {len(result)} symbols (after limit)")
+        return result
 
 
     def _check_mongo_exchanges_status(self, mongo_accounts: list) -> dict:
@@ -457,12 +469,14 @@ class Dashboard:
                 db = get_db()
                 doc = db.exchange_accounts.find_one({'_id': exchange_name})
                 if not doc:
-                    logger.warning(f"Exchange account not found in MongoDB: {exchange_name}")
+                    logger.warning(f"❌ Exchange account not found in MongoDB: {exchange_name}")
                     return jsonify({'error': 'Exchange not found'}), 404
+                logger.info(f"✅ Found exchange account {exchange_name}: {list(doc.keys())}")
                 ex_type = doc.get('type', '').lower()
-                logger.debug(f"search_market_symbols: exchange={exchange_name}, type={ex_type}, query={query}")
+                logger.info(f"Exchange type field value: '{ex_type}' (raw type field: {repr(doc.get('type'))})")
                 if not ex_type:
-                    logger.warning(f"Exchange {exchange_name} has no 'type' field")
+                    logger.warning(f"❌ Exchange {exchange_name} has no 'type' field or it's empty")
+                    logger.warning(f"Document keys: {list(doc.keys())}")
                     return jsonify({'error': 'Exchange type not configured'}), 400
                 exchange = {
                     'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url', ''),
@@ -470,11 +484,12 @@ class Dashboard:
                     'trading_mode': doc.get('trading_mode', 'spot'),
                     'api_key': '', 'api_secret': '',
                 }
+                logger.info(f"Fetching symbols: exchange_type={ex_type}, trading_mode={exchange.get('trading_mode')}, query={query}")
                 symbols = self._fetch_market_symbols(ex_type, exchange, query)
-                logger.debug(f"market-symbols returned {len(symbols)} results for {ex_type}")
+                logger.info(f"✅ market-symbols returned {len(symbols)} results for {ex_type} with query '{query}'")
                 return jsonify({'symbols': symbols})
             except Exception as e:
-                logger.error(f"market-symbols lookup failed: {e}", exc_info=True)
+                logger.error(f"❌ market-symbols lookup failed: {e}", exc_info=True)
                 return jsonify({'error': 'Failed to fetch symbols'}), 500
 
         @self.app.route('/api/exchanges/<exchange_name>/symbols', methods=['GET', 'POST'])
