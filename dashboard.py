@@ -283,7 +283,7 @@ class Dashboard:
                         'trading_mode': e.get('trading_mode', 'spot'),
                         'leverage': e.get('leverage', 1),
                         'proxy': e.get('proxy', ''),
-                        'symbols': e.get('symbols') or ([e.get('symbol')] if e.get('symbol') else []),
+                        'symbol': e.get('symbol'),
                         'account_id': e.get('account_id'),
                     }
                 return jsonify(mapped)
@@ -315,7 +315,7 @@ class Dashboard:
                     'trading_mode': doc.get('trading_mode', 'spot'),
                     'leverage': doc.get('leverage', 1),
                     'proxy': doc.get('proxy', ''),
-                    'symbols': doc.get('symbols') or ([doc.get('symbol')] if doc.get('symbol') else []),
+                    'symbol': doc.get('symbol'),
                     'account_id': doc.get('account_id'),
                     'type': doc.get('type', exchange_name),
                 }
@@ -370,9 +370,12 @@ class Dashboard:
                     update['trading_mode'] = tm
                 if 'proxy' in data:
                     update['proxy'] = data['proxy']
-                if 'symbols' in data and isinstance(data['symbols'], list):
-                    clean = [s.strip().upper() for s in data['symbols'] if isinstance(s, str) and s.strip()]
-                    update['symbols'] = clean
+                if 'symbol' in data:
+                    symbol = data['symbol']
+                    if symbol and isinstance(symbol, str):
+                        update['symbol'] = symbol.strip().upper()
+                    elif symbol is None or symbol == '':
+                        update['symbol'] = None
                 if update:
                     db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
                     return jsonify({'status': 'success', 'message': 'Exchange updated in DB'})
@@ -654,7 +657,7 @@ class Dashboard:
                     'type': ex_type,
                     'enabled': bool(data.get('enabled', False)),
                     'credentials': credentials,
-                    'symbols': data.get('symbols') or ([data['symbol']] if data.get('symbol') else []),
+                    'symbol': data.get('symbol'),
                     'leverage': data.get('leverage'),
                     'trading_mode': data.get('trading_mode'),
                     'testnet': bool(data.get('testnet', False)),

@@ -147,14 +147,15 @@ class WebhookHandler:
                 executors_to_use = []
                 for ex_acc_id, executor in executors.items():
                     meta = self._executor_meta.get(ex_acc_id, {})
-                    symbols = meta.get('symbols') or ([meta.get('symbol')] if meta.get('symbol') else [])
-                    normalized = {str(s).strip().upper().replace(' ', '') for s in symbols if s}
-                    allowed_bases = {s[:-2] if s.endswith('.P') else s for s in normalized}
-                    if not allowed_bases:
-                        logger.info(f"Symbol routing: {ex_acc_id} has no configured symbols — skipping")
-                    else:
-                        logger.info(f"Symbol routing: {ex_acc_id} allowed={sorted(allowed_bases)} incoming={symbol_base} match={symbol_base in allowed_bases if symbol_base else False}")
-                    if allowed_bases and symbol_base and symbol_base in allowed_bases:
+                    symbol_config = meta.get('symbol')
+                    if not symbol_config:
+                        logger.info(f"Symbol routing: {ex_acc_id} has no configured symbol — skipping")
+                        continue
+                    # Normalize configured symbol (e.g., "AAPL" or "AAPL.P" for Alpaca)
+                    normalized = str(symbol_config).strip().upper().replace(' ', '')
+                    allowed_base = normalized[:-2] if normalized.endswith('.P') else normalized
+                    logger.info(f"Symbol routing: {ex_acc_id} configured={normalized} (base={allowed_base}) incoming={symbol_base} match={symbol_base == allowed_base if symbol_base else False}")
+                    if symbol_base and symbol_base == allowed_base:
                         executors_to_use.append((ex_acc_id, executor))
 
                 if not executors_to_use:
