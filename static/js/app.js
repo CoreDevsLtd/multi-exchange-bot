@@ -762,8 +762,8 @@ const OverviewPage = {
   </div>`,
   computed: {
     accountCount() { return store.accounts.length; },
-    exchangeCount() { return Object.keys(store.exchanges).length; },
-    enabledCount() { return Object.values(store.exchanges).filter(e => e.enabled).length; },
+    exchangeCount() { return Object.keys(store.exchangeStatus).length; },
+    enabledCount() { return Object.values(store.exchangeStatus).filter(e => e.connected).length; },
     signalCount() { return store.signals.length; },
     recentSignals() { return store.signals.slice(0, 20); },
     isConnected() { return store.status && store.status.webhook_connected; },
@@ -796,10 +796,12 @@ const AccountsPage = {
           <span :class="['badge', account.enabled ? 'badge-success' : 'badge-neutral']">{{ account.enabled ? 'Enabled' : 'Disabled' }}</span>
         </div>
         <div class="account-card-footer">
-          <button class="btn btn-sm" @click="viewExchanges(account._id)"><i class="fas fa-list"></i> Exchanges</button>
-          <button class="btn btn-sm" @click="editAccount(account)"><i class="fas fa-edit"></i> Edit</button>
-          <button class="btn btn-sm" @click="toggleAccount(account._id, !account.enabled)">{{ account.enabled ? 'Disable' : 'Enable' }}</button>
-          <button class="btn btn-sm btn-danger btn-icon" @click="deleteAccount(account._id)"><i class="fas fa-trash"></i></button>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-sm" @click="viewExchanges(account._id)"><i class="fas fa-list"></i> Exchanges</button>
+            <button class="btn btn-sm" @click="editAccount(account)"><i class="fas fa-edit"></i> Edit</button>
+            <button class="btn btn-sm btn-danger btn-icon" @click="deleteAccount(account._id)"><i class="fas fa-trash"></i></button>
+          </div>
+          <toggle v-model="account.enabled" @update:modelValue="toggleAccount(account._id, $event)"></toggle>
         </div>
       </div>
     </div>
@@ -809,7 +811,12 @@ const AccountsPage = {
       this.$root.$refs.accountModal.open();
     },
     editAccount(account) {
-      this.$root.$refs.accountModal.open(account);
+      const modal = this.$root?.$refs?.accountModal;
+      if (modal && modal.open) {
+        modal.open(account);
+      } else {
+        showToast('Modal not ready', 'error');
+      }
     },
     viewExchanges(accountId) {
       pushRoute('exchanges', accountId);
@@ -827,6 +834,7 @@ const AccountsPage = {
 };
 
 const ExchangesPage = {
+  mixins: [componentMixin],
   template: `<div class="page-content">
     <div class="page-header">
       <h2><i class="fas fa-exchange-alt"></i> Exchanges{{ currentAccountName ? ' - ' + currentAccountName : '' }}</h2>
@@ -834,7 +842,7 @@ const ExchangesPage = {
         <button class="btn" @click="goBack()"><i class="fas fa-arrow-left"></i> Back</button>
       </div>
     </div>
-    <div v-if="!currentAccountId" class="empty-state">
+    <div v-if="!store.currentAccountId" class="empty-state">
       <p>Please select an account</p>
     </div>
     <div v-else class="exchange-cards-grid">
@@ -921,6 +929,13 @@ const ExchangesPage = {
       return store.exchangeStatus;
     }
   },
+  watch: {
+    'store.currentAccountId': async function(newAccountId) {
+      if (newAccountId) {
+        await api.loadExchangesForAccount(newAccountId);
+      }
+    }
+  },
   methods: {
     goBack() {
       pushRoute('accounts');
@@ -978,6 +993,12 @@ const ExchangesPage = {
     },
     async toggleEx(exId, enabled) {
       await api.toggleExchange(exId, enabled);
+    }
+  },
+  async mounted() {
+    // Load exchanges for this account when page loads
+    if (store.currentAccountId) {
+      await api.loadExchangesForAccount(store.currentAccountId);
     }
   }
 };
@@ -1213,26 +1234,26 @@ const App = {
     store.loading = true;
     const { page, accountId } = restoreFromURL();
 
-    await Promise.all([
+    // Set page and accountId immediately so components can use them
+    store.currentPage = page;
+    store.currentAccountId = accountId;
+
+    const loadPromises = [
       api.loadAccounts(),
-      api.loadAllExchanges(),
       api.loadTradingSettings(),
       api.loadRiskManagement(),
       api.loadSignals(),
       api.loadStatus(),
       api.loadExchangeStatus()
-    ]);
+    ];
 
-    store.loading = false;
-
-    // Restore page from URL
+    // Load exchanges only if viewing exchanges page
     if (page === 'exchanges' && accountId) {
-      await api.loadExchangesForAccount(accountId);
-      store.currentPage = page;
-      store.currentAccountId = accountId;
-    } else {
-      store.currentPage = page;
+      loadPromises.push(api.loadExchangesForAccount(accountId));
     }
+
+    await Promise.all(loadPromises);
+    store.loading = false;
 
     const urlPath = pageToPath(store.currentPage, store.currentAccountId);
     history.replaceState({ page: store.currentPage, accountId: store.currentAccountId }, '', urlPath);
