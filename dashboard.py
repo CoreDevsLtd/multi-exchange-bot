@@ -252,7 +252,17 @@ class Dashboard:
         def index():
             """Dashboard home page"""
             return render_template('dashboard.html', config=self.config)
-        
+
+        # Catch-all for SPA routing: /accounts, /symbols-routing, /trading-settings, /risk-management, /activity, /exchanges/<account_id>
+        @self.app.route('/<path:path>')
+        def spa_route(path):
+            """Serve dashboard.html for all non-API routes (SPA routing)"""
+            # Allow paths like: accounts, symbols-routing, trading-settings, risk-management, activity, exchanges/account_123
+            if not path.startswith('api/') and not path.startswith('static/'):
+                return render_template('dashboard.html', config=self.config)
+            # Fallback to 404 for other paths
+            return {'error': 'Not found'}, 404
+
         @self.app.route('/api/exchanges', methods=['GET'])
         def get_exchanges():
             """Get all exchange account configurations (enabled and disabled)."""
@@ -574,6 +584,30 @@ class Dashboard:
                 enabled = bool(data.get('enabled', True))
                 doc = {'_id': account_id, 'name': name, 'enabled': enabled}
                 db.accounts.insert_one(doc)
+
+                # Auto-create 4 disabled exchange account slots
+                EXCHANGE_TYPES = ['bybit', 'mexc', 'alpaca', 'ibkr']
+                for ex_type in EXCHANGE_TYPES:
+                    ex_id = f"{account_id}_{ex_type}"
+                    db.exchange_accounts.update_one(
+                        {'_id': ex_id},
+                        {'$setOnInsert': {
+                            '_id': ex_id,
+                            'account_id': account_id,
+                            'type': ex_type,
+                            'enabled': False,
+                            'credentials': {},
+                            'symbols': [],
+                            'leverage': None,
+                            'trading_mode': 'spot',
+                            'testnet': False,
+                            'base_url': '',
+                            'proxy': '',
+                            'use_paper': False,
+                        }},
+                        upsert=True
+                    )
+
                 return jsonify({'status': 'success', 'account': doc}), 201
             except Exception as e:
                 logger.error(f"Error listing/creating accounts from MongoDB: {e}")
@@ -593,7 +627,7 @@ class Dashboard:
                 data = request.get_json() or {}
                 from uuid import uuid4
                 ex_type = data.get('type', 'mexc')
-                ex_id = data.get('_id') or f"{ex_type}_{str(uuid4())[:8]}"
+                ex_id = data.get('_id') or f"{account_id}_{ex_type}"
                 credentials = data.get('credentials') or {}
                 if not credentials:
                     flat_key = (data.get('api_key') or '').strip()
@@ -613,7 +647,7 @@ class Dashboard:
                     '_id': ex_id,
                     'account_id': account_id,
                     'type': ex_type,
-                    'enabled': bool(data.get('enabled', True)),
+                    'enabled': bool(data.get('enabled', False)),
                     'credentials': credentials,
                     'symbols': data.get('symbols') or ([data['symbol']] if data.get('symbol') else []),
                     'leverage': data.get('leverage'),
