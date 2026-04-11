@@ -26,14 +26,21 @@ class WebhookHandler:
         """
         self.signal_monitor = signal_monitor or SignalMonitor()
         self.app = Flask(__name__)
+        self._executors_cache = None  # Cache executors to maintain position state across webhooks
+        self._executor_meta = {}
         self._setup_routes()
     
     def _get_or_create_executors(self):
         """Create executors for all enabled exchange accounts from MongoDB.
+        Executors are cached to maintain position state across webhooks.
 
         Returns:
             Dict of exchange_account_id -> TradingExecutor
         """
+        # Return cached executors if available
+        if self._executors_cache is not None:
+            return self._executors_cache
+
         executor_config = {}
         self._executor_meta = {}
         try:
@@ -87,6 +94,8 @@ class WebhookHandler:
                     logger.error(f"Failed to create client for exchange account {ex_id}: {e}", exc_info=True)
 
             logger.info(f"✅ Created {len(executors)} executor(s) from MongoDB")
+            # Cache executors to maintain position state across webhooks
+            self._executors_cache = executors
             return executors
         except Exception as e:
             logger.error(f"Failed to create executors from MongoDB: {e}", exc_info=True)
@@ -328,7 +337,7 @@ class WebhookHandler:
     
     def _setup_routes(self):
         """Setup Flask routes"""
-        
+
         @self.app.route('/webhook', methods=['POST'])
         def webhook():
             """Handle TradingView webhook POST requests"""

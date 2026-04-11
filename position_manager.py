@@ -97,6 +97,7 @@ class PositionManager:
     
     def close_position(self, symbol: str, exit_reason: str = None):
         """Close and remove position. Persists trade to MongoDB when available."""
+        logger.info(f"close_position called: symbol={symbol}, active_positions={list(self.active_positions.keys())}")
         if symbol in self.active_positions:
             pos = self.active_positions[symbol]
             try:

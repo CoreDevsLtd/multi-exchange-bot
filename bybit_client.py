@@ -374,34 +374,74 @@ class BybitClient:
     
     def set_leverage(self, symbol: str, leverage: Optional[int] = None) -> bool:
         """
-        Set leverage for a symbol (futures only).
-        
+        Set leverage for a symbol (futures only). Dynamically uses max supported leverage.
+
         Args:
             symbol: Trading pair (e.g. BTCUSDT)
-            leverage: Leverage value (uses self.leverage if not provided)
-            
+            leverage: Desired leverage (uses self.leverage if not provided).
+                     Will use min(requested, max_supported) for the symbol.
+
         Returns:
             True if successful
         """
         if self.trading_mode != 'futures':
             logger.info(f"Skipping set-leverage for {symbol}: trading_mode={self.trading_mode}")
             return True
-        lev = str(leverage or self.leverage)
+
+        # Check for existing open positions
+        positions = self.get_positions(symbol)
+        if positions:
+            for pos in positions:
+                pos_size = float(pos.get('size', 0))
+                pos_side = pos.get('side', 'N/A')
+                pos_entry = float(pos.get('avgPrice', 0))
+                if pos_size > 0:
+                    logger.warning(
+                        f"⚠️  EXISTING POSITION DETECTED on {symbol}: "
+                        f"Side={pos_side}, Size={pos_size}, Entry Price={pos_entry:.8f}. "
+                        f"Changing leverage on open position may affect margin requirements and risk."
+                    )
+
+        requested_lev = int(leverage or self.leverage)
+
+        # Query symbol's max supported leverage
+        instrument = self.get_instrument_info(symbol)
+        max_leverage = 1
+        if instrument:
+            leverage_filter = instrument.get('leverageFilter', {})
+            max_leverage = int(float(leverage_filter.get('maxLeverage', 1)))
+            logger.info(f"Symbol {symbol} supports up to {max_leverage}x leverage")
+        else:
+            logger.warning(f"Could not fetch leverage info for {symbol}, defaulting to 1x")
+
+        # Use min of requested and max supported
+        final_lev = min(requested_lev, max_leverage)
+
+        if final_lev < 1:
+            final_lev = 1
+
+        logger.info(f"Requested {requested_lev}x, max supported {max_leverage}x → using {final_lev}x for {symbol}")
+
         params = {
             'category': 'linear',
             'symbol': symbol,
-            'buyLeverage': lev,
-            'sellLeverage': lev
+            'buyLeverage': str(final_lev),
+            'sellLeverage': str(final_lev)
         }
         try:
             logger.info(
-                f"Attempting set-leverage: symbol={symbol}, leverage={lev}x, base_url={self.base_url}, testnet={self.testnet}, mode={self.trading_mode}"
+                f"Attempting set-leverage: symbol={symbol}, leverage={final_lev}x, base_url={self.base_url}, testnet={self.testnet}, mode={self.trading_mode}"
             )
             self._make_request('POST', '/v5/position/set-leverage', params=params, signed=True)
-            logger.info(f"✅ Set leverage {lev}x for {symbol} (buy/sell)")
+            logger.info(f"✅ Set leverage {final_lev}x for {symbol} (buy/sell)")
             return True
         except Exception as e:
-            logger.error(f"❌ set-leverage failed for {symbol} at {lev}x: {e}")
+            error_str = str(e)
+            # Error 110043 = leverage already set to that value (harmless, continue)
+            if '110043' in error_str or 'leverage not modified' in error_str.lower():
+                logger.info(f"ℹ️  Leverage already set to {final_lev}x for {symbol}, continuing...")
+                return True
+            logger.error(f"❌ set-leverage failed for {symbol} at {final_lev}x: {e}")
             return False
     
     def get_instrument_info(self, symbol: str) -> Optional[Dict]:
@@ -718,3 +758,19 @@ class BybitClient:
         except Exception as e:
             logger.warning(f"Could not get positions: {e}")
             return []
+
+    def get_position_for_symbol(self, symbol: str) -> Optional[Dict]:
+        """Get open position details for a specific symbol (returns None if no position)"""
+        positions = self.get_positions(symbol)
+        if positions:
+            pos = positions[0]
+            if float(pos.get('size', 0)) > 0:
+                return {
+                    'symbol': symbol,
+                    'side': pos.get('side'),
+                    'size': float(pos.get('size', 0)),
+                    'entry_price': float(pos.get('avgPrice', 0)),
+                    'unrealised_pnl': float(pos.get('unrealisedPnl', 0)),
+                    'leverage': float(pos.get('leverage', 1)),
+                }
+        return None

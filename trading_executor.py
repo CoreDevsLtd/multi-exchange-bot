@@ -435,8 +435,12 @@ class TradingExecutor:
                 order_response = self.client.place_market_sell(symbol, sell_quantity, reduce_only=True)
             else:
                 order_response = self.client.place_market_sell(symbol, sell_quantity)
-            
+
             logger.info(f"SELL order placed successfully: {order_response}")
+
+            # Close position and save to MongoDB
+            self.position_manager.close_position(symbol, exit_reason='CLOSE')
+
             return order_response
             
         except Exception as e:
