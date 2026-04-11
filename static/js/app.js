@@ -36,6 +36,7 @@ const BASE_URL_DEFAULTS = {
 const store = reactive({
   page:         'overview',
   accountId:    null,
+  tradeId:      null,
   accounts:     [],
   exchanges:    {},   // keyed by exchange._id
   exStatus:     {},   // keyed by exchange._id
@@ -46,6 +47,7 @@ const store = reactive({
   status:       {},
   demoMode:     false,
   demoStats:    {},
+  portfolio:    [],   // Milestone 3: Portfolio page data
   loading:      true,
   toast: { msg: '', type: 'info', visible: false, _t: null },
 });
@@ -244,6 +246,30 @@ const api = {
     return false;
   },
 
+  /* --- Portfolio (Milestone 3) --- */
+  async loadPortfolio() {
+    const d = await api.get('/api/portfolio').catch(() => null);
+    if (d) store.portfolio = d.tickers ?? [];
+    return d;
+  },
+
+  async loadTickerDetail(symbol) {
+    const d = await api.get(`/api/portfolio/${encodeURIComponent(symbol)}`).catch(() => null);
+    if (d) return d;
+    return null;
+  },
+
+  async loadTradeDetail(symbol, tradeId) {
+    const d = await api.get(`/api/portfolio/${encodeURIComponent(symbol)}/trade/${encodeURIComponent(tradeId)}`).catch(() => null);
+    if (d) return d;
+    return null;
+  },
+
+  async checkPosition(exchangeId, symbol) {
+    const d = await api.get(`/api/exchanges/${encodeURIComponent(exchangeId)}/check-position/${encodeURIComponent(symbol)}`).catch(() => null);
+    return d;
+  },
+
   /* --- Status & Signals --- */
   async loadSignals() {
     const d = await api.get('/api/signals/recent?limit=100&hours=24').catch(() => null);
@@ -286,32 +312,41 @@ const ROUTES = {
   '/trading-settings': { page: 'tradingSettings' },
   '/risk-management':  { page: 'risk' },
   '/activity':         { page: 'activity' },
+  '/portfolio':        { page: 'portfolio' },  // Milestone 3: Portfolio page
 };
 
 function parsePath(pathname) {
   if (ROUTES[pathname]) return { ...ROUTES[pathname], accountId: null };
   const m = pathname.match(/^\/exchanges\/(.+)$/);
   if (m) return { page: 'exchanges', accountId: decodeURIComponent(m[1]) };
+  const trade = pathname.match(/^\/portfolio\/(.+)\/trade\/(.+)$/);
+  if (trade) return { page: 'tradeDetail', accountId: decodeURIComponent(trade[1]), tradeId: decodeURIComponent(trade[2]) };
+  const tm = pathname.match(/^\/portfolio\/(.+)$/);
+  if (tm) return { page: 'tickerDetail', accountId: decodeURIComponent(tm[1]) };
   return { page: 'overview', accountId: null };
 }
 
-function buildPath(page, accountId = null) {
+function buildPath(page, accountId = null, tradeId = null) {
   if (page === 'exchanges' && accountId) return `/exchanges/${encodeURIComponent(accountId)}`;
+  if (page === 'tradeDetail' && accountId && tradeId) return `/portfolio/${encodeURIComponent(accountId)}/trade/${encodeURIComponent(tradeId)}`;
+  if (page === 'tickerDetail' && accountId) return `/portfolio/${encodeURIComponent(accountId)}`;
   return Object.entries(ROUTES).find(([, v]) => v.page === page)?.[0] ?? '/';
 }
 
-function navigate(page, accountId = null, replace = false) {
+function navigate(page, accountId = null, replace = false, tradeId = null) {
   store.page = page;
   store.accountId = accountId;
-  const url = buildPath(page, accountId);
-  replace ? history.replaceState({ page, accountId }, '', url)
-           : history.pushState({ page, accountId }, '', url);
+  store.tradeId = tradeId;
+  const url = buildPath(page, accountId, tradeId);
+  replace ? history.replaceState({ page, accountId, tradeId }, '', url)
+           : history.pushState({ page, accountId, tradeId }, '', url);
 }
 
 window.addEventListener('popstate', async e => {
-  const { page, accountId } = e.state ?? parsePath(location.pathname);
+  const { page, accountId, tradeId } = e.state ?? parsePath(location.pathname);
   store.page = page;
   store.accountId = accountId;
+  store.tradeId = tradeId;
   if (page === 'exchanges' && accountId) await api.loadExchangesForAccount(accountId);
 });
 
@@ -467,6 +502,8 @@ const ExchangeModal = {
     ibkrPass: '',
     ibkrSetting: false,
     ibkrContainerRunning: false,
+    positionWarning: null,
+    originalLeverage: 1,
   }),
   computed: {
     isIbkr()          { return this.type === 'ibkr'; },
@@ -530,6 +567,15 @@ const ExchangeModal = {
                   <div v-if="form.trading_mode === 'futures'" class="field-group">
                     <label>Leverage</label>
                     <input v-model.number="form.leverage" type="number" min="1" max="100">
+                  </div>
+                </div>
+
+                <div v-if="positionWarning" style="padding:12px; background:#fff3cd; border:1px solid #ffc107; border-radius:4px; margin:12px 0; color:#856404;">
+                  <div style="font-weight:bold; margin-bottom:8px;">⚠️ WARNING: Open Position Detected</div>
+                  <div>{{ positionWarning.warning }}</div>
+                  <div style="margin-top:8px; font-size:12px;">
+                    <button @click="confirmLeverageChange" style="padding:4px 8px; background:#dc3545; color:white; border:none; border-radius:3px; cursor:pointer; margin-right:4px;">Confirm & Change Leverage</button>
+                    <button @click="positionWarning = null" style="padding:4px 8px; background:#6c757d; color:white; border:none; border-radius:3px; cursor:pointer;">Cancel</button>
                   </div>
                 </div>
 
@@ -704,6 +750,7 @@ const ExchangeModal = {
     },
     showEdit(exchange) {
       const creds = exchange.credentials ?? {};
+      const origLeverage = exchange.leverage ?? 1;
       Object.assign(this, {
         isCreate: false, exchangeId: exchange._id,
         accountId: exchange.account_id,
@@ -711,13 +758,15 @@ const ExchangeModal = {
         secretHasValue: !!(creds.api_secret ?? exchange.api_secret),
         saving: false, testing: false,
         symbolQuery: '', symbolResults: [],
+        positionWarning: null,
+        originalLeverage: origLeverage,
         form: {
           enabled:         exchange.enabled !== false,
           api_key:         creds.api_key ?? exchange.api_key ?? '',
           api_secret:      '',
           base_url:        exchange.base_url ?? '',
           trading_mode:    exchange.trading_mode ?? 'spot',
-          leverage:        exchange.leverage ?? 1,
+          leverage:        origLeverage,
           paper_trading:   !!exchange.paper_trading,
           use_sub_account: !!exchange.use_sub_account,
           sub_account_id:  exchange.sub_account_id ?? '',
@@ -794,7 +843,34 @@ const ExchangeModal = {
       }
       this.ibkrSetting = false;
     },
+    async checkPositionBeforeLeverage() {
+      // Check if leverage changed on Bybit and warn if position exists
+      if (!this.isBybit || this.isCreate || this.form.leverage === this.originalLeverage) {
+        return true; // No change, proceed
+      }
+
+      // Check for open position
+      const symbol = this.form.symbol;
+      if (!symbol) {
+        return true; // No symbol assigned, no position possible
+      }
+
+      const result = await api.checkPosition(this.exchangeId, symbol);
+      if (result?.has_position) {
+        this.positionWarning = result;
+        return false; // Block save
+      }
+      return true; // No position, proceed
+    },
+
     async save() {
+      // Check position before saving leverage change
+      const canSave = await this.checkPositionBeforeLeverage();
+      if (!canSave) {
+        toast('⚠️  Cannot change leverage on open position. Close position first or confirm you understand the risk.', 'warn');
+        return;
+      }
+
       this.saving = true;
       const p = this.payload();
       let ok;
@@ -805,7 +881,16 @@ const ExchangeModal = {
         ok = await api.updateExchange(this.exchangeId, p);
       }
       this.saving = false;
-      if (ok) this.close();
+      if (ok) {
+        this.positionWarning = null;
+        this.close();
+      }
+    },
+
+    confirmLeverageChange() {
+      // User confirms they want to change leverage despite open position
+      this.positionWarning = null;
+      this.save();
     },
   },
 };
@@ -1334,6 +1419,7 @@ const ActivityPage = {
     filterSignal: 'all',
     filterSymbol: '',
     sortDesc: true,
+    selectedLog: null,
   }),
   computed: {
     filtered() {
@@ -1372,6 +1458,12 @@ const ActivityPage = {
         if (exec.order_id) return `Order: ${exec.order_id}`;
       }
       return '—';
+    },
+    showDetail(log) {
+      this.selectedLog = log;
+    },
+    closeDetail() {
+      this.selectedLog = null;
     },
   },
   template: `
@@ -1430,13 +1522,359 @@ const ActivityPage = {
                 <span v-else class="text-muted">—</span>
               </td>
               <td class="td-detail">
-                <span :class="log.status === 'success' ? 'clr-success' : log.status === 'failed' || log.status === 'error' ? 'clr-error' : ''">
+                <button v-if="log.failure_reason || log.error || (log.executions && log.executions.length)"
+                        @click="showDetail(log)"
+                        style="background:none; border:none; cursor:pointer; text-decoration:underline; color:inherit; padding:0;">
+                  <span :class="log.status === 'success' ? 'clr-success' : log.status === 'failed' || log.status === 'error' ? 'clr-error' : ''">
+                    {{ getDetail(log) }}
+                  </span>
+                </button>
+                <span v-else :class="log.status === 'success' ? 'clr-success' : log.status === 'failed' || log.status === 'error' ? 'clr-error' : ''">
                   {{ getDetail(log) }}
                 </span>
               </td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <transition name="modal">
+        <div v-if="selectedLog" class="modal-backdrop" @mousedown.self="closeDetail">
+          <div class="modal-box">
+            <div class="modal-head">
+              <i class="fas fa-exclamation-circle"></i> {{ selectedLog.symbol }} — {{ getStatusLabel(selectedLog.status) }}
+              <button class="modal-close" @click="closeDetail">×</button>
+            </div>
+            <div class="modal-body" style="max-height:60vh; overflow-y:auto;">
+              <div class="field-group">
+                <label>Signal</label>
+                <input type="text" :value="selectedLog.signal" disabled style="background:#f5f5f5;">
+              </div>
+              <div class="field-group">
+                <label>Time</label>
+                <input type="text" :value="new Date(selectedLog.timestamp).toLocaleString()" disabled style="background:#f5f5f5;">
+              </div>
+              <div class="field-group">
+                <label>Status</label>
+                <input type="text" :value="getStatusLabel(selectedLog.status)" disabled style="background:#f5f5f5;">
+              </div>
+              <div v-if="selectedLog.matched_exchanges && selectedLog.matched_exchanges.length" class="field-group">
+                <label>Matched Exchanges</label>
+                <input type="text" :value="selectedLog.matched_exchanges.join(', ')" disabled style="background:#f5f5f5;">
+              </div>
+              <div v-if="selectedLog.failure_reason" class="field-group">
+                <label style="color:#dc3545; font-weight:bold;">Failure Reason</label>
+                <textarea :value="selectedLog.failure_reason" disabled style="background:#f5f5f5; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
+              </div>
+              <div v-if="selectedLog.error" class="field-group">
+                <label style="color:#dc3545; font-weight:bold;">Error</label>
+                <textarea :value="selectedLog.error" disabled style="background:#f5f5f5; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
+              </div>
+              <div v-if="selectedLog.executions && selectedLog.executions.length" class="field-group">
+                <label>Execution Details</label>
+                <div style="background:#f5f5f5; padding:12px; border-radius:4px; max-height:300px; overflow-y:auto;">
+                  <div v-for="(exec, idx) in selectedLog.executions" :key="idx" style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #ddd;">
+                    <div><strong>Exchange:</strong> {{ exec.exchange }}</div>
+                    <div v-if="exec.error"><strong style="color:#dc3545;">Error:</strong> {{ exec.error }}</div>
+                    <div v-if="exec.order_id"><strong>Order ID:</strong> {{ exec.order_id }}</div>
+                    <div v-if="exec.order_response"><strong>Response:</strong> <pre style="margin:4px 0; font-size:11px; overflow-x:auto;">{{ JSON.stringify(exec.order_response, null, 2) }}</pre></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="modal-foot" style="padding:12px; border-top:1px solid #ddd; text-align:right;">
+              <button @click="closeDetail" class="btn btn-primary">Close</button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </div>`,
+};
+
+/* ---- Portfolio Page (Milestone 3) ---- */
+const PortfolioPage = {
+  mixins: [mixin],
+  computed: {
+    sortedTickers() {
+      return (store.portfolio || []).slice().sort((a, b) => {
+        const aDate = new Date(a.last_trade || 0);
+        const bDate = new Date(b.last_trade || 0);
+        return bDate - aDate;
+      });
+    },
+  },
+  methods: {
+    navigateToTicker(symbol) {
+      navigate('tickerDetail', symbol);
+    },
+    formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    },
+  },
+  template: `
+    <div class="page">
+      <div class="page-head"><h2><i class="fas fa-chart-pie"></i> Portfolio</h2></div>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr><th>Symbol</th><th>Trades</th><th>Last Trade</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-if="!sortedTickers.length">
+              <td colspan="4" class="td-empty">No trades recorded yet</td>
+            </tr>
+            <tr v-for="ticker in sortedTickers" :key="ticker._id">
+              <td><strong>{{ ticker._id }}</strong></td>
+              <td>{{ ticker.trade_count }}</td>
+              <td class="td-date">{{ formatDate(ticker.last_trade) }}</td>
+              <td style="text-align:right">
+                <button @click="navigateToTicker(ticker._id)" class="btn-link">View Details →</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`,
+};
+
+/* ---- Ticker Detail Page (Milestone 3) ---- */
+const TickerDetailPage = {
+  mixins: [mixin],
+  data: () => ({
+    tickerData: null,
+    loading: false,
+  }),
+  computed: {
+    symbol() {
+      return store.accountId;
+    },
+  },
+  methods: {
+    async loadTickerData() {
+      if (!this.symbol) return;
+      this.loading = true;
+      const data = await api.loadTickerDetail(this.symbol);
+      if (data) {
+        this.tickerData = data;
+      } else {
+        toast('Failed to load ticker details', 'error');
+      }
+      this.loading = false;
+    },
+    backToPortfolio() {
+      navigate('portfolio');
+    },
+    formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    },
+    formatPrice(price) {
+      return price ? parseFloat(price).toFixed(2) : '—';
+    },
+    navigateToTrade(tradeId) {
+      navigate('tradeDetail', this.symbol, false, tradeId);
+    },
+  },
+  async mounted() {
+    await this.loadTickerData();
+  },
+  template: `
+    <div class="page">
+      <div class="page-head">
+        <button @click="backToPortfolio" style="margin-right:12px; padding:0; border:none; background:none; cursor:pointer; font-size:18px;">←</button>
+        <h2 v-if="tickerData"><i class="fas fa-chart-line"></i> {{ tickerData.symbol }}</h2>
+        <h2 v-else><i class="fas fa-spinner fa-spin"></i> Loading…</h2>
+      </div>
+
+      <div v-if="tickerData" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:16px; margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-label">ROI</div>
+          <div class="stat-val" :class="tickerData.roi_percent >= 0 ? 'clr-success' : 'clr-error'">
+            {{ tickerData.roi_percent }}%
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Win Rate</div>
+          <div class="stat-val">{{ tickerData.win_rate_percent }}%</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Total P&L</div>
+          <div class="stat-val" :class="tickerData.total_pnl >= 0 ? 'clr-success' : 'clr-error'">
+            {{ '$' + tickerData.total_pnl }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Trades</div>
+          <div class="stat-val">{{ tickerData.winning_trades }}/{{ tickerData.total_trades }}</div>
+        </div>
+      </div>
+
+      <div class="table-wrap" v-if="tickerData">
+        <table class="data-table">
+          <thead>
+            <tr><th>Time</th><th>Direction</th><th>Entry</th><th>Exit</th><th>P&L</th><th></th></tr>
+          </thead>
+          <tbody>
+            <tr v-if="!tickerData.trades.length">
+              <td colspan="6" class="td-empty">No trades for this symbol</td>
+            </tr>
+            <tr v-for="trade in tickerData.trades" :key="trade._id">
+              <td class="td-time">
+                {{ formatDate(trade.timestamp_open) }}
+              </td>
+              <td>
+                <span :class="['sig-badge', (trade.direction || '').toLowerCase()]">
+                  {{ (trade.direction || '—').toUpperCase() }}
+                </span>
+              </td>
+              <td>{{ formatPrice(trade.entry_price) }}</td>
+              <td>{{ formatPrice(trade.exit_price) }}</td>
+              <td :class="trade.result_usd >= 0 ? 'clr-success' : 'clr-error'">
+                {{ '$' + (trade.result_usd || 0).toFixed(2) }}
+              </td>
+              <td style="text-align:right">
+                <button @click="navigateToTrade(trade._id)" class="btn-link">Details →</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`,
+};
+
+/* ---- Trade Detail Page (Milestone 3) ---- */
+const TradeDetailPage = {
+  mixins: [mixin],
+  data: () => ({
+    tradeData: null,
+    loading: false,
+  }),
+  computed: {
+    symbol() {
+      return store.accountId;
+    },
+    tradeId() {
+      return store.tradeId;
+    },
+  },
+  methods: {
+    async loadTradeData() {
+      if (!this.symbol || !this.tradeId) return;
+      this.loading = true;
+      const data = await api.loadTradeDetail(this.symbol, this.tradeId);
+      if (data) {
+        this.tradeData = data;
+      } else {
+        toast('Failed to load trade details', 'error');
+      }
+      this.loading = false;
+    },
+    backToTicker() {
+      navigate('tickerDetail', this.symbol);
+    },
+    formatDate(dateStr) {
+      if (!dateStr) return '—';
+      const d = new Date(dateStr);
+      return d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+    },
+    formatPrice(price) {
+      return price ? parseFloat(price).toFixed(8) : '—';
+    },
+    formatResult(val, isPercent = false) {
+      if (val === null || val === undefined) return '—';
+      const formatted = parseFloat(val).toFixed(isPercent ? 2 : 2);
+      return formatted;
+    },
+    getTpLabel(idx) {
+      if (idx === 4) return 'TP5 (Runner)';
+      return `TP${idx + 1}`;
+    },
+  },
+  async mounted() {
+    await this.loadTradeData();
+  },
+  template: `
+    <div class="page">
+      <div class="page-head">
+        <button @click="backToTicker" style="margin-right:12px; padding:0; border:none; background:none; cursor:pointer; font-size:18px;">←</button>
+        <h2 v-if="tradeData"><i class="fas fa-receipt"></i> Trade: {{ tradeData.symbol }}</h2>
+        <h2 v-else><i class="fas fa-spinner fa-spin"></i> Loading…</h2>
+      </div>
+
+      <div v-if="tradeData" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-label">Direction</div>
+          <div class="stat-val">
+            <span :class="['sig-badge', (tradeData.direction || '').toLowerCase()]">
+              {{ (tradeData.direction || '—').toUpperCase() }}
+            </span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Entry Price</div>
+          <div class="stat-val">{{ formatPrice(tradeData.entry_price) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Exit Price</div>
+          <div class="stat-val">{{ formatPrice(tradeData.exit_price) }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Stop Loss</div>
+          <div class="stat-val">{{ formatPrice(tradeData.stop_loss) }}</div>
+        </div>
+      </div>
+
+      <div v-if="tradeData" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:16px; margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-label">Result (USD)</div>
+          <div class="stat-val" :class="tradeData.result_usd >= 0 ? 'clr-success' : 'clr-error'">
+            {{ '$' + formatResult(tradeData.result_usd) }}
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Result (%)</div>
+          <div class="stat-val" :class="tradeData.result_percent >= 0 ? 'clr-success' : 'clr-error'">
+            {{ formatResult(tradeData.result_percent) }}%
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">R-Multiple</div>
+          <div class="stat-val">{{ tradeData.r_multiple !== null ? tradeData.r_multiple : '—' }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Trade Duration</div>
+          <div class="stat-val">{{ tradeData.trade_duration }}</div>
+        </div>
+      </div>
+
+      <div v-if="tradeData" class="settings-card">
+        <div class="field-group">
+          <label>Take Profit Hits</label>
+          <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:8px;">
+            <div v-for="(hit, idx) in tradeData.tp_hits" :key="idx" style="padding:8px; background:#f5f5f5; border-radius:4px; text-align:center;">
+              <div style="font-size:12px; color:#666;">{{ getTpLabel(idx) }}</div>
+              <div style="font-weight:bold;">{{ hit ? '✓ YES' : '✗ NO' }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="tradeData" class="settings-card">
+        <div class="field-group">
+          <label>Exit Reason</label>
+          <input type="text" :value="tradeData.exit_reason" disabled style="background:#f5f5f5;">
+        </div>
+        <div class="field-group">
+          <label>Opened</label>
+          <input type="text" :value="formatDate(tradeData.timestamp_open)" disabled style="background:#f5f5f5;">
+        </div>
+        <div class="field-group">
+          <label>Closed</label>
+          <input type="text" :value="formatDate(tradeData.timestamp_close)" disabled style="background:#f5f5f5;">
+        </div>
       </div>
     </div>`,
 };
@@ -1450,7 +1888,7 @@ const App = {
   components: {
     AccountModal, ExchangeModal,
     OverviewPage, AccountsPage, ExchangesPage,
-    SymbolsRoutingPage, TradingSettingsPage, RiskManagementPage, ActivityPage,
+    SymbolsRoutingPage, TradingSettingsPage, RiskManagementPage, ActivityPage, PortfolioPage, TickerDetailPage, TradeDetailPage,
   },
 
   /** provide modal openers via inject — no store.modals hacks */
@@ -1475,6 +1913,7 @@ const App = {
       { id: 'symbolsRouting',  icon: 'fas fa-route',      label: 'Symbols & Routing' },
       { id: 'tradingSettings', icon: 'fas fa-sliders-h',  label: 'Trading Settings' },
       { id: 'risk',            icon: 'fas fa-shield-alt', label: 'Risk Management' },
+      { id: 'portfolio',       icon: 'fas fa-chart-pie',  label: 'Portfolio' },
       { id: 'activity',        icon: 'fas fa-chart-bar',  label: 'Activity' },
     ],
     _intervals: [],
@@ -1526,6 +1965,9 @@ const App = {
           <symbols-routing-page  v-show="store.page === 'symbolsRouting'"></symbols-routing-page>
           <trading-settings-page v-show="store.page === 'tradingSettings'"></trading-settings-page>
           <risk-management-page  v-show="store.page === 'risk'"></risk-management-page>
+          <portfolio-page        v-show="store.page === 'portfolio'"></portfolio-page>
+          <ticker-detail-page    v-show="store.page === 'tickerDetail'"></ticker-detail-page>
+          <trade-detail-page     v-show="store.page === 'tradeDetail'"></trade-detail-page>
           <activity-page         v-show="store.page === 'activity'"></activity-page>
         </template>
       </main>
@@ -1542,8 +1984,8 @@ const App = {
 
   async mounted() {
     /* Restore page from URL */
-    const { page, accountId } = parsePath(location.pathname);
-    navigate(page, accountId, true);
+    const { page, accountId, tradeId } = parsePath(location.pathname);
+    navigate(page, accountId, true, tradeId);
 
     /* Initial data load — parallel where possible */
     await Promise.all([
@@ -1553,6 +1995,7 @@ const App = {
       api.loadWebhookLogs(),
       api.loadStatus(),
       api.loadExStatus(),
+      api.loadPortfolio(),
     ]);
 
     /* Load exchanges for every account */

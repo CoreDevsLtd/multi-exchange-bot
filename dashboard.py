@@ -248,14 +248,14 @@ class Dashboard:
                                              base_url=(base_url or 'https://api.bybit.com').rstrip('/'),
                                              testnet=ex_acc.get('testnet', False),
                                              trading_mode=ex_acc.get('trading_mode', 'spot'),
-                                             leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
+                                             leverage=int(ex_acc.get('leverage') or 1), proxy=proxy)
                     elif ex_type == 'ibkr':
                         from ibkr_client import IBKRClient
                         client = IBKRClient(api_key=api_key or '', api_secret=api_secret or '',
                                             base_url=(base_url or 'https://localhost:5000').rstrip('/'),
                                             account_id=ex_acc.get('account_id', ''),
                                             use_paper=ex_acc.get('use_paper', False),
-                                            leverage=int(ex_acc.get('leverage', 1)))
+                                            leverage=int(ex_acc.get('leverage') or 1))
                     if client:
                         validation = client.validate_connection()
                         exchange_status['connected'] = validation.get('connected', False)
@@ -625,6 +625,144 @@ class Dashboard:
                 logger.error(f'Error updating central risk in MongoDB: {e}', exc_info=True)
                 return jsonify({'error': 'Failed to update central risk in DB'}), 500
 
+        @self.app.route('/api/portfolio', methods=['GET'])
+        def get_portfolio():
+            """Get all tickers with at least one trade (Milestone 3 - Portfolio Page)"""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                # Group trades by symbol, count trades per symbol
+                tickers = list(db.trades.aggregate([
+                    {'$group': {
+                        '_id': '$symbol',
+                        'trade_count': {'$sum': 1},
+                        'last_trade': {'$max': '$timestamp_close'}
+                    }},
+                    {'$sort': {'last_trade': -1}}  # Most recent first
+                ]))
+
+                return jsonify({'tickers': tickers, 'count': len(tickers)})
+            except Exception as e:
+                logger.error(f'Error fetching portfolio: {e}', exc_info=True)
+                return jsonify({'error': 'Failed to fetch portfolio'}), 500
+
+        @self.app.route('/api/portfolio/<symbol>', methods=['GET'])
+        def get_ticker_detail(symbol):
+            """Get ticker detail with trades, ROI, and win rate (Milestone 3 - Ticker Detail Page)"""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+
+                # Fetch all trades for this symbol, sorted by open time descending
+                trades = list(db.trades.find({'symbol': symbol}).sort('timestamp_open', -1))
+
+                # Serialize ObjectId to string
+                for t in trades:
+                    if '_id' in t and hasattr(t['_id'], '__class__') and t['_id'].__class__.__name__ == 'ObjectId':
+                        t['_id'] = str(t['_id'])
+
+                # Calculate ROI and win rate
+                total_pnl = sum(float(t.get('result_usd') or 0) for t in trades)
+                winning_trades = sum(1 for t in trades if float(t.get('result_usd') or 0) > 0)
+                total_trades = len(trades)
+                win_rate = (winning_trades / total_trades * 100) if total_trades > 0 else 0
+
+                # Calculate total invested (entry_price * quantity for first trade, approximation)
+                total_invested = 0
+                for t in trades:
+                    entry = float(t.get('entry_price') or 0)
+                    if entry > 0 and t.get('direction'):
+                        # Rough estimate: assume 1 unit traded
+                        total_invested += entry
+
+                roi = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+
+                return jsonify({
+                    'symbol': symbol,
+                    'roi_percent': round(roi, 2),
+                    'win_rate_percent': round(win_rate, 2),
+                    'total_pnl': round(total_pnl, 2),
+                    'total_trades': total_trades,
+                    'winning_trades': winning_trades,
+                    'trades': trades
+                })
+            except Exception as e:
+                logger.error(f'Error fetching ticker detail for {symbol}: {e}', exc_info=True)
+                return jsonify({'error': 'Failed to fetch ticker detail'}), 500
+
+        @self.app.route('/api/portfolio/<symbol>/trade/<trade_id>', methods=['GET'])
+        def get_trade_detail(symbol, trade_id):
+            """Get detailed breakdown of a single trade (Milestone 3 - Trade Detail Page)"""
+            try:
+                from mongo_db import get_db
+                from bson import ObjectId
+                db = get_db()
+
+                # Fetch the trade by ID
+                try:
+                    trade = db.trades.find_one({'_id': ObjectId(trade_id)})
+                except Exception:
+                    trade = db.trades.find_one({'_id': trade_id})
+
+                if not trade:
+                    return jsonify({'error': 'Trade not found'}), 404
+
+                # Serialize ObjectId to string
+                if '_id' in trade and hasattr(trade['_id'], '__class__') and trade['_id'].__class__.__name__ == 'ObjectId':
+                    trade['_id'] = str(trade['_id'])
+
+                # Calculate R-Multiple: P&L / |Entry Price - Stop Loss|
+                entry = float(trade.get('entry_price') or 0)
+                stop_loss = float(trade.get('stop_loss') or 0)
+                pnl = float(trade.get('result_usd') or 0)
+
+                r_multiple = None
+                if entry > 0 and stop_loss > 0:
+                    initial_risk = abs(entry - stop_loss)
+                    if initial_risk > 0:
+                        r_multiple = round(pnl / initial_risk, 2)
+
+                # Calculate trade duration in readable format
+                from datetime import datetime
+                try:
+                    open_time = datetime.fromisoformat(trade['timestamp_open'].replace('Z', '+00:00'))
+                    close_time = datetime.fromisoformat(trade['timestamp_close'].replace('Z', '+00:00'))
+                    duration_seconds = int((close_time - open_time).total_seconds())
+
+                    hours = duration_seconds // 3600
+                    minutes = (duration_seconds % 3600) // 60
+                    seconds = duration_seconds % 60
+
+                    if hours > 0:
+                        duration_str = f"{hours}h {minutes}m"
+                    elif minutes > 0:
+                        duration_str = f"{minutes}m {seconds}s"
+                    else:
+                        duration_str = f"{seconds}s"
+                except Exception:
+                    duration_str = f"{trade.get('trade_duration_sec', 0)}s"
+
+                return jsonify({
+                    'symbol': trade.get('symbol'),
+                    'direction': trade.get('direction'),
+                    'entry_price': round(float(trade.get('entry_price') or 0), 8),
+                    'exit_price': round(float(trade.get('exit_price') or 0), 8),
+                    'stop_loss': round(float(trade.get('stop_loss') or 0), 8),
+                    'tp_hits': trade.get('tp_hits', [False, False, False, False, False]),
+                    'result_usd': round(float(trade.get('result_usd') or 0), 2),
+                    'result_percent': round(float(trade.get('result_percent') or 0), 2),
+                    'r_multiple': r_multiple,
+                    'trade_duration': duration_str,
+                    'trade_duration_sec': trade.get('trade_duration_sec', 0),
+                    'exit_reason': trade.get('exit_reason', 'UNKNOWN'),
+                    'timestamp_open': trade.get('timestamp_open'),
+                    'timestamp_close': trade.get('timestamp_close'),
+                })
+            except Exception as e:
+                logger.error(f'Error fetching trade detail {trade_id}: {e}', exc_info=True)
+                return jsonify({'error': 'Failed to fetch trade detail'}), 500
+
         @self.app.route('/api/accounts', methods=['GET', 'POST'])
         def list_accounts():
             """List logical accounts (GET) or create/update an account (POST)."""
@@ -907,7 +1045,60 @@ class Dashboard:
             except Exception as e:
                 logger.error(f"Connection test failed: {e}")
                 return jsonify({'error': 'Connection failed', 'message': str(e)}), 500
-        
+
+        @self.app.route('/api/exchanges/<exchange_name>/check-position/<symbol>', methods=['GET'])
+        def check_position_before_leverage(exchange_name, symbol):
+            """Check if a position exists for a symbol before changing leverage (Bybit only)"""
+            try:
+                from mongo_db import get_db
+                db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name})
+
+                if not doc:
+                    return jsonify({'error': 'Exchange account not found'}), 404
+
+                exchange_type = (doc.get('type') or exchange_name).lower()
+                if exchange_type != 'bybit':
+                    return jsonify({'error': 'Position checking only supported for Bybit', 'has_position': False}), 400
+
+                # Get credentials
+                creds = doc.get('credentials') or {}
+                try:
+                    from secrets_manager import decrypt_credentials_dict
+                    creds = decrypt_credentials_dict(creds)
+                except Exception:
+                    pass
+
+                api_key = creds.get('api_key', '')
+                api_secret = creds.get('api_secret', '')
+
+                if not api_key or not api_secret:
+                    return jsonify({'error': 'Exchange credentials not configured'}), 400
+
+                # Create Bybit client and check position
+                from bybit_client import BybitClient
+                client = BybitClient(api_key=api_key, api_secret=api_secret,
+                                    base_url=(doc.get('base_url') or 'https://api.bybit.com').rstrip('/'),
+                                    testnet=doc.get('testnet', False),
+                                    trading_mode=doc.get('trading_mode', 'spot'),
+                                    leverage=int(doc.get('leverage') or 1))
+
+                # Get position for symbol
+                position = client.get_position_for_symbol(symbol)
+
+                if position:
+                    return jsonify({
+                        'has_position': True,
+                        'warning': f"⚠️ EXISTING POSITION: {position['side']} {position['size']} @ {position['entry_price']:.8f} (Leverage: {position['leverage']}x, Unrealised P&L: ${position['unrealised_pnl']:.2f})",
+                        'position': position
+                    })
+                else:
+                    return jsonify({'has_position': False, 'message': f'No open position for {symbol}'})
+
+            except Exception as e:
+                logger.error(f"Position check failed for {exchange_name}/{symbol}: {e}", exc_info=True)
+                return jsonify({'error': 'Failed to check position', 'message': str(e)}), 500
+
         @self.app.route('/api/status', methods=['GET'])
         def get_status():
             """Get bot status"""
