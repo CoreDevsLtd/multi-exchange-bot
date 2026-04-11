@@ -5,6 +5,7 @@ Receives and processes TradingView webhook alerts
 
 import json
 import logging
+import threading
 from typing import Dict, Optional
 from flask import Flask, request, jsonify
 import jsonschema
@@ -127,30 +128,126 @@ class WebhookHandler:
             # Log failures should never break webhook processing
             logger.warning(f"Failed to log webhook to MongoDB: {e}")
 
+    def _execute_signal_async(self, signal_data: dict, data: dict, executors: dict):
+        """Execute signal in background thread"""
+        try:
+            symbol = signal_data.get('symbol', '')
+            symbol_norm = str(symbol).strip().upper().replace(' ', '') if symbol else ''
+            # Base form for matching: BTCUSDT.P and BTCUSDT both map to BTCUSDT
+            symbol_base = symbol_norm[:-2] if symbol_norm.endswith('.P') else symbol_norm
+
+            # Find executors that should receive this symbol
+            executors_to_use = []
+            for ex_acc_id, executor in executors.items():
+                meta = self._executor_meta.get(ex_acc_id, {})
+                symbol_config = meta.get('symbol')
+                if not symbol_config:
+                    continue
+                normalized = str(symbol_config).strip().upper().replace(' ', '')
+                allowed_base = normalized[:-2] if normalized.endswith('.P') else normalized
+                if symbol_base and symbol_base == allowed_base:
+                    executors_to_use.append((ex_acc_id, executor))
+
+            if not executors_to_use:
+                msg = f"Symbol {symbol} not configured for any enabled exchange. Add it in Exchanges → Manage Symbols."
+                logger.info(f"ℹ️  {msg}")
+                self._log_webhook({
+                    'raw_payload': data or {},
+                    'signal': signal_data.get('signal'),
+                    'symbol': symbol,
+                    'status': 'skipped',
+                    'failure_reason': msg,
+                    'matched_exchanges': []
+                })
+                self.signal_monitor.add_signal(signal_data, executed=False, error=msg)
+                return
+
+            results = []
+            any_success = False
+            first_error = None
+            for ex_name, executor in executors_to_use:
+                try:
+                    logger.info(f"🚀 Executing {signal_data.get('signal')} for {symbol_norm or symbol} on {ex_name}")
+                    order_response = executor.execute_signal(signal_data)
+                    if order_response and isinstance(order_response, dict) and order_response.get('error'):
+                        err = order_response['error']
+                        results.append({'exchange': ex_name, 'error': err})
+                        logger.error(f"❌ {ex_name}: {err}")
+                        if first_error is None:
+                            first_error = err
+                    elif order_response:
+                        results.append({'exchange': ex_name, 'success': True, 'order': order_response})
+                        any_success = True
+                        logger.info(f"✅ {ex_name}: Order executed")
+                    else:
+                        err = 'Executor returned None (check logs for validation/position-size errors)'
+                        results.append({'exchange': ex_name, 'error': err})
+                        if first_error is None:
+                            first_error = err
+                except ValueError as e:
+                    err = str(e)
+                    results.append({'exchange': ex_name, 'error': err})
+                    logger.error(f"❌ {ex_name}: {e}")
+                    if first_error is None:
+                        first_error = err
+                except Exception as e:
+                    err = str(e)
+                    results.append({'exchange': ex_name, 'error': err})
+                    logger.error(f"❌ {ex_name}: {e}", exc_info=True)
+                    if first_error is None:
+                        first_error = err
+
+            logger.info(f"Execution summary: symbol={symbol_norm or symbol}, selected_exchanges={len(executors_to_use)}, success={any_success}")
+
+            # Build executions array from results
+            executions = []
+            for r in results:
+                executions.append({
+                    'exchange_id': r.get('exchange'),
+                    'success': r.get('success', False),
+                    'order_id': r.get('order', {}).get('order_id') if r.get('order') else None,
+                    'error': r.get('error')
+                })
+
+            self._log_webhook({
+                'raw_payload': data or {},
+                'signal': signal_data.get('signal'),
+                'symbol': symbol,
+                'status': 'success' if any_success else 'failed',
+                'matched_exchanges': [ex for ex, _ in executors_to_use],
+                'executions': executions,
+                'error': None if any_success else first_error,
+                'failure_reason': None if any_success else f"Execution failed: {first_error}"
+            })
+            self.signal_monitor.add_signal(signal_data, executed=any_success, error=first_error if not any_success else None)
+        except Exception as e:
+            logger.error(f"Background execution failed: {e}", exc_info=True)
+            self.signal_monitor.add_signal(signal_data, executed=False, error=str(e))
+
     def _handle_webhook(self):
         """Handle webhook request (extracted for reuse)"""
         from flask import request, jsonify
         try:
             # Mark webhook as connected
             self.signal_monitor.ping_webhook()
-            
+
             # Get request data
             data = request.get_json()
-            
+
             if not data:
                 # Try to parse as form data (TradingView sends form data)
                 data = request.form.to_dict()
                 if 'message' in data:
                     # Parse pipe-delimited message
                     data = self._parse_pipe_message(data)
-            
+
             logger.info(f"Received webhook: {json.dumps(data, indent=2)}")
-            
+
             # Validate and parse signal data
             signal_data = self._parse_signal_data(data)
             if signal_data:
                 logger.info(f"Processed signal data: {json.dumps(signal_data, indent=2)}")
-            
+
             if not signal_data:
                 error_msg = 'Invalid signal data'
                 self._log_webhook({
@@ -163,107 +260,23 @@ class WebhookHandler:
                 })
                 self.signal_monitor.add_signal(data if data else {}, executed=False, error=error_msg)
                 return jsonify({'status': 'error', 'message': error_msg}), 400
-            
+
             # Get executors for all enabled exchanges
             executors = self._get_or_create_executors()
-            
+
             if executors:
-                symbol = signal_data.get('symbol', '')
-                symbol_norm = str(symbol).strip().upper().replace(' ', '') if symbol else ''
-                # Base form for matching: BTCUSDT.P and BTCUSDT both map to BTCUSDT
-                symbol_base = symbol_norm[:-2] if symbol_norm.endswith('.P') else symbol_norm
-                logger.info(f"Signal routing: raw_symbol={symbol}, normalized={symbol_norm}, base={symbol_base}")
-                # Find executors that should receive this symbol (keyed by exchange_account_id)
-                executors_to_use = []
-                for ex_acc_id, executor in executors.items():
-                    meta = self._executor_meta.get(ex_acc_id, {})
-                    symbol_config = meta.get('symbol')
-                    if not symbol_config:
-                        logger.info(f"Symbol routing: {ex_acc_id} has no configured symbol — skipping")
-                        continue
-                    # Normalize configured symbol (e.g., "AAPL" or "AAPL.P" for Alpaca)
-                    normalized = str(symbol_config).strip().upper().replace(' ', '')
-                    allowed_base = normalized[:-2] if normalized.endswith('.P') else normalized
-                    logger.info(f"Symbol routing: {ex_acc_id} configured={normalized} (base={allowed_base}) incoming={symbol_base} match={symbol_base == allowed_base if symbol_base else False}")
-                    if symbol_base and symbol_base == allowed_base:
-                        executors_to_use.append((ex_acc_id, executor))
+                # Return immediately and process in background
+                thread = threading.Thread(
+                    target=self._execute_signal_async,
+                    args=(signal_data, data, executors),
+                    daemon=True
+                )
+                thread.start()
 
-                if not executors_to_use:
-                    msg = f"Symbol {symbol} not configured for any enabled exchange. Add it in Exchanges → Manage Symbols."
-                    logger.info(f"ℹ️  {msg}")
-                    self._log_webhook({
-                        'raw_payload': data or {},
-                        'signal': signal_data.get('signal'),
-                        'symbol': symbol,
-                        'status': 'skipped',
-                        'failure_reason': msg,
-                        'matched_exchanges': []
-                    })
-                    self.signal_monitor.add_signal(signal_data, executed=False, error=msg)
-                    return jsonify({'status': 'skipped', 'message': msg, 'symbol': symbol}), 200
-                
-                results = []
-                any_success = False
-                first_error = None
-                for ex_name, executor in executors_to_use:
-                    try:
-                        logger.info(f"🚀 Executing {signal_data.get('signal')} for {symbol_norm or symbol} on {ex_name}")
-                        order_response = executor.execute_signal(signal_data)
-                        if order_response and isinstance(order_response, dict) and order_response.get('error'):
-                            err = order_response['error']
-                            results.append({'exchange': ex_name, 'error': err})
-                            logger.error(f"❌ {ex_name}: {err}")
-                            if first_error is None:
-                                first_error = err
-                        elif order_response:
-                            results.append({'exchange': ex_name, 'success': True, 'order': order_response})
-                            any_success = True
-                            logger.info(f"✅ {ex_name}: Order executed")
-                        else:
-                            err = 'Executor returned None (check logs for validation/position-size errors)'
-                            results.append({'exchange': ex_name, 'error': err})
-                            if first_error is None:
-                                first_error = err
-                    except ValueError as e:
-                        err = str(e)
-                        results.append({'exchange': ex_name, 'error': err})
-                        logger.error(f"❌ {ex_name}: {e}")
-                        if first_error is None:
-                            first_error = err
-                    except Exception as e:
-                        err = str(e)
-                        results.append({'exchange': ex_name, 'error': err})
-                        logger.error(f"❌ {ex_name}: {e}", exc_info=True)
-                        if first_error is None:
-                            first_error = err
-
-                logger.info(f"Execution summary: symbol={symbol_norm or symbol}, selected_exchanges={len(executors_to_use)}, success={any_success}")
-
-                # Build executions array from results
-                executions = []
-                for r in results:
-                    executions.append({
-                        'exchange_id': r.get('exchange'),
-                        'success': r.get('success', False),
-                        'order_id': r.get('order', {}).get('order_id') if r.get('order') else None,
-                        'error': r.get('error')
-                    })
-
-                self._log_webhook({
-                    'raw_payload': data or {},
-                    'signal': signal_data.get('signal'),
-                    'symbol': symbol,
-                    'status': 'success' if any_success else 'failed',
-                    'matched_exchanges': [ex for ex, _ in executors_to_use],
-                    'executions': executions,
-                    'error': None if any_success else first_error,
-                    'failure_reason': None if any_success else f"Execution failed: {first_error}"
-                })
-                self.signal_monitor.add_signal(signal_data, executed=any_success, error=first_error if not any_success else None)
                 return jsonify({
-                    'status': 'success' if any_success else 'error',
-                    'message': f"Executed on {sum(1 for r in results if r.get('success'))} of {len(results)} exchange(s)",
-                    'results': results
+                    'status': 'success',
+                    'message': 'Signal accepted and queued for processing',
+                    'results': []
                 }), 200
             else:
                 # Demo mode: simulate trade execution
@@ -450,23 +463,10 @@ class WebhookHandler:
                 close_price = data.get('close') or (data.get('price', {}).get('close') if isinstance(data.get('price'), dict) else 0)
                 data['price'] = {'close': close_price}
             
-            # Convert crypto symbols to Alpaca format if needed (BTCUSD -> BTC/USD)
+            # Keep symbol as-is - symbol routing handles exchange-specific formats
+            # (Bybit uses DOGEUSDT, Alpaca uses DOGE/USD)
+            # Symbol conversion is handled per-exchange in their client adapters
             symbol = data.get('symbol', '')
-            if symbol and '/' not in symbol:
-                # Check if it's a crypto symbol (ends with USD, USDT, or USDC)
-                symbol_upper = symbol.upper()
-                if symbol_upper.endswith('USD') or symbol_upper.endswith('USDT') or symbol_upper.endswith('USDC'):
-                    # Extract base currency (e.g., BTC from BTCUSD or BTCUSDT)
-                    base_currency = symbol_upper
-                    for suffix in ['USDT', 'USDC', 'USD']:
-                        if base_currency.endswith(suffix):
-                            base_currency = base_currency[:-len(suffix)]
-                            break
-                    
-                    # Convert to Alpaca crypto format: BTC/USD
-                    if base_currency:
-                        data['symbol'] = f"{base_currency}/USD"
-                        logger.info(f"Converted crypto symbol {symbol} to Alpaca format: {data['symbol']}")
             
             return data
         
