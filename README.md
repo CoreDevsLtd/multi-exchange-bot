@@ -1,10 +1,72 @@
-Multi-Exchange Trading Bot — MongoDB Migration & Dashboard Updates
+Multi-Exchange Trading Bot
 
-Overview
+## Project Status
+
+✅ **Milestone 1: COMPLETE** — Exchange Integrations & Multi-Account Architecture
+- Bybit integration fixed with dynamic leverage detection
+- Interactive Brokers (IBKR) integration built with ibind REST API
+- MEXC multi-account support implemented
+- Alpaca integration available
+- Multi-account architecture with per-account symbol routing
+
+✅ **Milestone 2: COMPLETE** — RSI Directional Confirmation Filter
+- Added RSI directional filter to TradingView Pine Script strategy
+- BUY signals fire only when RSI > 50 (bullish momentum)
+- SELL signals fire only when RSI < 50 (bearish momentum)
+- Filter is toggleable via strategy input (default: enabled)
+- All original strategy logic (NMA, Kahlman, HMA) preserved
+- Tested and validated ✅
+
+📋 **Milestone 3: PLANNING PHASE** — Portfolio & Trade Detail Dashboard
+- Portfolio page showing all trading tickers
+- Ticker detail page with ROI, win rate, trade history
+- Trade detail page with full trade breakdown
+- Max drawdown/profit calculation from candle data
+- Blocked: Awaiting trade data (no trades executed yet)
+
+---
+
+## Overview
 
 This README documents the MongoDB migration, backend refactor, and dashboard UI changes performed to support centralized risk management, multi-account/multi-exchange support, and trade history persistence.
 
-Summary of work performed
+## TradingView Strategy (Milestone 2)
+
+**File:** `tradingview_strategy.pine`  
+**Name:** CUSTOM IDEAL BB + RSI + WT (STRICT LABEL LOCK v3 FINAL)  
+**Version:** 4  
+**Status:** Ready for deployment
+
+### RSI Directional Filter (NEW)
+
+Added Milestone 2 filter that prevents signals from firing when RSI direction contradicts signal direction:
+
+**Filter Logic:**
+```
+BUY signals:  Fire only if (structure valid) AND (RSI 53-83) AND (RSI > 50)
+SELL signals: Fire only if (structure valid) AND (RSI 26-44) AND (RSI < 50)
+```
+
+**Toggle:** 
+- Input `Enable RSI Directional Filter` (default: enabled)
+- Can be turned off to revert to original behavior
+
+**Benefits:**
+- Reduces false signals by filtering non-momentum-aligned trades
+- All original strategy logic preserved (NMA, Kahlman, HMA, label validation)
+- Strategy keeps all research-backed complexity intact
+
+**Deployment:**
+To deploy the strategy to TradingView:
+1. Copy content of `tradingview_strategy.pine`
+2. Add to TradingView chart
+3. Create alerts pointing to webhook endpoint
+4. Test alongside old strategy for 24-48 hours
+5. Switch when confident
+
+---
+
+## Summary of Backend Work Performed
 
 - Integrated MongoDB (supports MONGO_URI or MONGODB_URI). DB name is taken from MONGO_DB env, MONGODB_DB env, or parsed from the URI path.
 - New/updated collections: accounts, exchange_accounts, central_risk_management, trades.
@@ -14,6 +76,7 @@ Summary of work performed
 - Frontend updates (static/js/dashboard.js, templates/dashboard.html): Accounts page, account/exchange CRUD wiring, masked API secrets in responses, exchange modal improvements and parent-account support.
 - Entrypoint (main_with_dashboard.py) updated to prefer centralized risk from Mongo and integrate webhook routes into the dashboard Flask app.
 - Started dashboard during testing on alternate ports (8081/8082) to avoid killing existing server; verified /api/accounts and /api/exchanges responses.
+- Implemented multi-exchange webhook handler with signal routing by symbol and exchange account.
 
 MongoDB schema examples
 
