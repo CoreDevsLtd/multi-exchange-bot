@@ -1466,6 +1466,10 @@ const ActivityPage = {
       this.selectedLog = null;
     },
   },
+  async mounted() {
+    // Ensure webhook logs are loaded when Activity page is displayed
+    await api.loadWebhookLogs();
+  },
   template: `
     <div class="page">
       <div class="page-head"><h2><i class="fas fa-chart-bar"></i> Activity</h2></div>
@@ -1494,7 +1498,10 @@ const ActivityPage = {
           <input v-model="filterSymbol" type="text" placeholder="Filter symbol…">
         </div>
       </div>
-      <div class="table-wrap">
+      <div v-if="store.webhookLogs.length === 0" style="padding:20px; text-align:center; color:#999;">
+        <p><i class="fas fa-spinner fa-spin"></i> Loading webhook logs...</p>
+      </div>
+      <div v-else class="table-wrap">
         <table class="data-table">
           <thead>
             <tr><th>Time</th><th>Symbol</th><th>Signal</th><th>Status</th><th>Matched Exchanges</th><th>Detail</th></tr>
@@ -1545,39 +1552,40 @@ const ActivityPage = {
               <i class="fas fa-exclamation-circle"></i> {{ selectedLog.symbol }} — {{ getStatusLabel(selectedLog.status) }}
               <button class="modal-close" @click="closeDetail">×</button>
             </div>
-            <div class="modal-body" style="max-height:60vh; overflow-y:auto;">
+            <div class="modal-body" style="max-height:60vh; overflow-y:auto; color:#333;">
               <div class="field-group">
                 <label>Signal</label>
-                <input type="text" :value="selectedLog.signal" disabled style="background:#f5f5f5;">
+                <input type="text" :value="selectedLog.signal" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px;">
               </div>
               <div class="field-group">
                 <label>Time</label>
-                <input type="text" :value="new Date(selectedLog.timestamp).toLocaleString()" disabled style="background:#f5f5f5;">
+                <input type="text" :value="new Date(selectedLog.timestamp).toLocaleString()" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px;">
               </div>
               <div class="field-group">
                 <label>Status</label>
-                <input type="text" :value="getStatusLabel(selectedLog.status)" disabled style="background:#f5f5f5;">
+                <input type="text" :value="getStatusLabel(selectedLog.status)" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px;">
               </div>
               <div v-if="selectedLog.matched_exchanges && selectedLog.matched_exchanges.length" class="field-group">
                 <label>Matched Exchanges</label>
-                <input type="text" :value="selectedLog.matched_exchanges.join(', ')" disabled style="background:#f5f5f5;">
+                <input type="text" :value="selectedLog.matched_exchanges.join(', ')" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px;">
               </div>
               <div v-if="selectedLog.failure_reason" class="field-group">
                 <label style="color:#dc3545; font-weight:bold;">Failure Reason</label>
-                <textarea :value="selectedLog.failure_reason" disabled style="background:#f5f5f5; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
+                <textarea :value="selectedLog.failure_reason" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
               </div>
               <div v-if="selectedLog.error" class="field-group">
                 <label style="color:#dc3545; font-weight:bold;">Error</label>
-                <textarea :value="selectedLog.error" disabled style="background:#f5f5f5; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
+                <textarea :value="selectedLog.error" disabled style="background:#f5f5f5; color:#333; border:1px solid #ddd; padding:8px; border-radius:4px; min-height:80px; font-family:monospace; font-size:12px;"></textarea>
               </div>
               <div v-if="selectedLog.executions && selectedLog.executions.length" class="field-group">
                 <label>Execution Details</label>
-                <div style="background:#f5f5f5; padding:12px; border-radius:4px; max-height:300px; overflow-y:auto;">
+                <div style="background:#f5f5f5; padding:12px; border-radius:4px; max-height:300px; overflow-y:auto; color:#333; border:1px solid #ddd;">
                   <div v-for="(exec, idx) in selectedLog.executions" :key="idx" style="margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid #ddd;">
-                    <div><strong>Exchange:</strong> {{ exec.exchange }}</div>
+                    <div><strong>Exchange:</strong> {{ exec.exchange_id || exec.exchange }}</div>
+                    <div><strong>Success:</strong> <span :style="{color: exec.success ? '#28a745' : '#dc3545'}">{{ exec.success ? '✓ YES' : '✗ NO' }}</span></div>
                     <div v-if="exec.error"><strong style="color:#dc3545;">Error:</strong> {{ exec.error }}</div>
-                    <div v-if="exec.order_id"><strong>Order ID:</strong> {{ exec.order_id }}</div>
-                    <div v-if="exec.order_response"><strong>Response:</strong> <pre style="margin:4px 0; font-size:11px; overflow-x:auto;">{{ JSON.stringify(exec.order_response, null, 2) }}</pre></div>
+                    <div v-if="exec.order_id"><strong>Order ID:</strong> <code style="background:#fff; padding:2px 6px; border-radius:3px; font-size:11px;">{{ exec.order_id }}</code></div>
+                    <div v-if="exec.order_response"><strong>Response:</strong> <pre style="margin:4px 0; font-size:11px; overflow-x:auto; background:#fff; padding:8px; border-radius:3px;">{{ JSON.stringify(exec.order_response, null, 2) }}</pre></div>
                   </div>
                 </div>
               </div>
