@@ -201,12 +201,27 @@ class TradingExecutor:
         """
         symbol = self._symbol_for_exchange(symbol)
         try:
-            # Check for existing positions if warning is enabled
-            warn_existing = self.config.get('warn_existing_positions', True)
-            if warn_existing:
-                has_positions = self.check_existing_positions(symbol)
-                if has_positions:
-                    logger.warning(f"⚠️  EXISTING POSITIONS DETECTED for {symbol}. Proceeding with new order.")
+            # Block duplicate BUY if an open position already exists for this symbol.
+            # Pine Script position tracking (inLong var) is the primary guard;
+            # this is a second layer of defence in case the strategy is reloaded
+            # (which resets Pine var state) or signals arrive out of order.
+            if self.exchange_name == 'bybit' and hasattr(self.client, 'get_positions'):
+                try:
+                    existing = self.client.get_positions(symbol)
+                    for pos in (existing or []):
+                        if pos.get('symbol') == symbol and float(pos.get('size', 0)) > 0:
+                            logger.warning(f"⚠️  BLOCKED duplicate BUY: open position already exists for {symbol} (size={pos.get('size')}). Ignoring signal.")
+                            return {'error': f'Duplicate BUY blocked: open position already exists for {symbol}', 'symbol': symbol, 'exchange': self.exchange_name}
+                except Exception as e:
+                    logger.warning(f"Could not check existing Bybit positions for {symbol}: {e}")
+            elif self.exchange_name == 'alpaca' and hasattr(self.client, 'get_position'):
+                try:
+                    pos = self.client.get_position(symbol)
+                    if pos and float(pos.get('qty', 0)) > 0:
+                        logger.warning(f"⚠️  BLOCKED duplicate BUY: open position already exists for {symbol}. Ignoring signal.")
+                        return {'error': f'Duplicate BUY blocked: open position already exists for {symbol}', 'symbol': symbol, 'exchange': self.exchange_name}
+                except Exception as e:
+                    logger.warning(f"Could not check existing Alpaca position for {symbol}: {e}")
             
             # Get current price (this will be our entry price)
             try:
@@ -250,6 +265,10 @@ class TradingExecutor:
                 order_response = self.client.place_market_buy(symbol, position_size_usdt, price=entry_price)
             else:
                 quote_currency = 'USD' if self.exchange_name in ['alpaca', 'ibkr'] else 'USDT'
+                # Alpaca stock orders fail after-hours — check market clock first
+                if self.exchange_name == 'alpaca' and hasattr(self.client, '_is_crypto_symbol') and not self.client._is_crypto_symbol(symbol):
+                    if hasattr(self.client, 'is_market_open') and not self.client.is_market_open():
+                        logger.warning(f"⚠️  US equities market is closed. Alpaca stock order for {symbol} will be queued for next market open (day order).")
                 logger.info(f"Executing BUY order: {symbol}, Size: {position_size_usdt} {quote_currency}")
                 order_response = self.client.place_market_buy(symbol, position_size_usdt)
             
@@ -285,7 +304,7 @@ class TradingExecutor:
                     order_data = result['list'][0]
                     status = order_data.get('orderStatus', '').upper()
             
-            if status not in ['FILLED', 'FILL', 'FILLED', 'PARTIALLYFILLED']:
+            if status not in ['FILLED', 'FILL', 'PARTIALLY_FILLED']:
                 logger.warning(f"Order {order_id} not yet filled, status: {status}")
             
             # Get executed quantity (different field names per exchange)
@@ -400,6 +419,15 @@ class TradingExecutor:
             reduce_only = False
             
             if self.exchange_name == 'alpaca':
+                # Use close_position_by_symbol when available — Alpaca handles qty/rounding natively
+                if hasattr(self.client, 'close_position_by_symbol'):
+                    try:
+                        order_response = self.client.close_position_by_symbol(symbol)
+                        logger.info(f"SELL (close position) placed successfully: {order_response}")
+                        self.position_manager.close_position(symbol, exit_reason='CLOSE')
+                        return order_response
+                    except Exception as e:
+                        logger.warning(f"close_position_by_symbol failed ({e}), falling back to market sell")
                 base_currency = symbol.replace('USDT', '').replace('USD', '')
                 position = self.client.get_position(symbol)
                 if position:

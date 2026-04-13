@@ -217,8 +217,11 @@ const api = {
     return false;
   },
 
-  async searchSymbols(id, q) {
-    const d = await api.get(`/api/exchanges/${id}/market-symbols?q=${encodeURIComponent(q)}`).catch(() => null);
+  async searchSymbols(id, q, draft = null) {
+    const url = `/api/exchanges/${id}/market-symbols?q=${encodeURIComponent(q)}`;
+    const d = draft
+      ? await api.post(url, draft).catch(() => null)
+      : await api.get(url).catch(() => null);
     return d?.symbols ?? [];
   },
 
@@ -807,7 +810,11 @@ const ExchangeModal = {
       clearTimeout(this.symbolTimer);
       if (!this.symbolQuery.trim()) { this.symbolResults = []; return; }
       this.symbolTimer = setTimeout(async () => {
-        this.symbolResults = await api.searchSymbols(this.exchangeId || `${this.accountId}_${this.type}`, this.symbolQuery);
+        this.symbolResults = await api.searchSymbols(
+          this.exchangeId || `${this.accountId}_${this.type}`,
+          this.symbolQuery,
+          this.payload()
+        );
       }, 250);
     },
     async testConn() {

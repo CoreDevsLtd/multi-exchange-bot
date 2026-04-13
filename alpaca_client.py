@@ -490,7 +490,9 @@ class AlpacaClient:
                    notional: Optional[float] = None,
                    limit_price: Optional[float] = None,
                    stop_price: Optional[float] = None,
-                   time_in_force: str = 'day') -> Dict:
+                   time_in_force: str = 'day',
+                   price: Optional[float] = None,
+                   reduce_only: bool = False) -> Dict:
         """
         Place an order (supports both stocks and crypto)
         
@@ -507,6 +509,9 @@ class AlpacaClient:
         Returns:
             Order response
         """
+        # Accept 'price' as an alias for limit_price (tp_sl_manager compatibility)
+        limit_price = limit_price or price
+
         # Format symbol based on asset type (crypto or stock)
         is_crypto = self._is_crypto_symbol(symbol)
         if is_crypto:
@@ -675,22 +680,82 @@ class AlpacaClient:
         
         return self._make_request('GET', '/v2/orders', params=params)
     
-    def cancel_order(self, order_id: str) -> Dict:
+    def cancel_order(self, symbol_or_order_id: str, order_id: str = None) -> Dict:
         """
-        Cancel an order
-        
+        Cancel an order.
+
+        Accepts both single-arg form cancel_order(order_id) and two-arg form
+        cancel_order(symbol, order_id) for compatibility with MEXCClient/BybitClient.
+
         Args:
-            order_id: Order ID to cancel
-            
+            symbol_or_order_id: Order ID (single-arg) or symbol (two-arg, ignored)
+            order_id: Order ID when called as cancel_order(symbol, order_id)
+
         Returns:
             Cancellation response
         """
-        return self._make_request('DELETE', f'/v2/orders/{order_id}')
+        actual_order_id = order_id if order_id is not None else symbol_or_order_id
+        return self._make_request('DELETE', f'/v2/orders/{actual_order_id}')
     
+    def get_market_clock(self) -> Dict:
+        """
+        Get current market clock status (open/closed, next open/close times).
+
+        Use this before placing stock orders to avoid after-hours rejections.
+        Crypto is 24/7 and does not need this check.
+
+        Returns:
+            Dict with keys: timestamp, is_open, next_open, next_close
+        """
+        return self._make_request('GET', '/v2/clock')
+
+    def is_market_open(self) -> bool:
+        """
+        Return True if the US equities market is currently open.
+
+        Returns:
+            True if market is open, False otherwise (or on error)
+        """
+        try:
+            clock = self.get_market_clock()
+            return bool(clock.get('is_open', False))
+        except Exception as e:
+            logger.warning(f"Could not check market clock: {e}")
+            return False
+
+    def close_position_by_symbol(self, symbol: str,
+                                  qty: Optional[float] = None,
+                                  percentage: Optional[float] = None) -> Dict:
+        """
+        Close (or partially close) a position by symbol via DELETE /v2/positions/:symbol.
+
+        More reliable than placing a market sell order because Alpaca handles
+        fractional shares, rounding, and lot sizes automatically.
+
+        Args:
+            symbol: Trading symbol (e.g., 'AAPL', 'BTC/USD')
+            qty: Exact quantity to close (optional, defaults to full position)
+            percentage: Percentage of position to close 0-100 (optional)
+
+        Returns:
+            Order response dict
+        """
+        is_crypto = self._is_crypto_symbol(symbol)
+        clean_symbol = self._format_crypto_symbol(symbol) if is_crypto else self._format_stock_symbol(symbol)
+
+        params: Dict = {}
+        if qty is not None:
+            params['qty'] = str(qty)
+        elif percentage is not None:
+            params['percentage'] = str(min(100.0, max(0.0, float(percentage))))
+
+        logger.info(f"Closing position via DELETE /v2/positions/{clean_symbol} params={params or 'full'}")
+        return self._make_request('DELETE', f'/v2/positions/{clean_symbol}', params=params or None)
+
     def cancel_all_orders(self) -> List[Dict]:
         """
         Cancel all open orders
-        
+
         Returns:
             List of cancellation responses
         """

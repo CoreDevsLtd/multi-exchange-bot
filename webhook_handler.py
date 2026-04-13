@@ -71,7 +71,7 @@ class WebhookHandler:
                                             use_sub_account=ex_acc.get('use_sub_account', False))
                     elif ex_type == 'alpaca':
                         from alpaca_client import AlpacaClient
-                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url)
+                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://paper-api.alpaca.markets')
                     elif ex_type == 'ibkr':
                         from ibkr_client import IBKRClient
                         gateway_host = ex_acc.get('gateway_host', '127.0.0.1')

@@ -5,11 +5,17 @@ Web interface for managing API keys, exchanges, and trading settings
 
 import os
 import logging
+import time
 import requests
 from flask import Flask, render_template, request, jsonify
 import secrets
 
 logger = logging.getLogger(__name__)
+
+# Module-level cache for Alpaca assets to avoid fetching thousands of records on every keystroke.
+# Key: exchange_account_id, Value: {'symbols': [...], 'ts': epoch_seconds}
+_alpaca_symbol_cache: dict = {}
+_ALPACA_CACHE_TTL = 3600  # 1 hour
 
 
 class Dashboard:
@@ -173,29 +179,52 @@ class Dashboard:
         return self._filter_symbols([s for s in symbols if s], query, limit)
 
     def _fetch_alpaca_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        base_url = exchange.get('base_url') or 'https://paper-api.alpaca.markets'
-        base_url = base_url.rstrip('/')
-        api_key = exchange.get('api_key', '')
-        api_secret = exchange.get('api_secret', '')
+        base_url = (exchange.get('base_url') or 'https://paper-api.alpaca.markets').rstrip('/')
+        api_key = (exchange.get('api_key') or '').strip()
+        api_secret = (exchange.get('api_secret') or '').strip()
         if not api_key or not api_secret or api_secret == '***':
+            logger.warning('Alpaca symbol search: missing credentials, returning empty list')
             return []
+
+        # Use a cache key based on the API key so paper/live accounts are separate
+        cache_key = f'alpaca_{api_key[:12]}'
+        cached = _alpaca_symbol_cache.get(cache_key)
+        if cached and (time.time() - cached['ts']) < _ALPACA_CACHE_TTL:
+            logger.debug(f'Alpaca symbol cache hit for {cache_key} ({len(cached["symbols"])} symbols)')
+            return self._filter_symbols(cached['symbols'], query, limit)
+
+        # Cache miss — fetch from Alpaca (runs once per hour per account)
         headers = {
             'APCA-API-KEY-ID': api_key,
             'APCA-API-SECRET-KEY': api_secret,
         }
-        symbols = []
+        all_symbols = []
         for asset_class in ('us_equity', 'crypto'):
-            resp = requests.get(
-                f"{base_url}/v2/assets",
-                params={'status': 'active', 'asset_class': asset_class},
-                headers=headers,
-                timeout=10
-            )
-            if resp.status_code == 200:
-                for a in resp.json():
-                    if a.get('tradable'):
-                        symbols.append(a.get('symbol', ''))
-        return self._filter_symbols([s for s in symbols if s], query, limit)
+            try:
+                resp = requests.get(
+                    f"{base_url}/v2/assets",
+                    params={'status': 'active', 'asset_class': asset_class},
+                    headers=headers,
+                    timeout=30,  # large response — give it room to breathe
+                )
+                if resp.status_code == 200:
+                    for a in resp.json():
+                        sym = (a.get('symbol') or '').strip()
+                        if sym and a.get('tradable'):
+                            all_symbols.append(sym)
+                    logger.info(f'Alpaca assets fetched: {asset_class} → {len(all_symbols)} total so far')
+                else:
+                    logger.warning(f'Alpaca /v2/assets {asset_class} returned {resp.status_code}: {resp.text[:200]}')
+            except requests.exceptions.Timeout:
+                logger.error(f'Timeout fetching Alpaca {asset_class} assets — will retry next search')
+            except Exception as e:
+                logger.error(f'Error fetching Alpaca {asset_class} assets: {e}')
+
+        if all_symbols:
+            _alpaca_symbol_cache[cache_key] = {'symbols': all_symbols, 'ts': time.time()}
+            logger.info(f'Alpaca symbol cache populated: {len(all_symbols)} symbols for {cache_key}')
+
+        return self._filter_symbols(all_symbols, query, limit)
 
     def _filter_symbols(self, symbols: list, query: str, limit: int) -> list:
         logger.debug(f"_filter_symbols: input={len(symbols)} symbols, query='{query}', limit={limit}")
@@ -466,7 +495,7 @@ class Dashboard:
                 logger.error(f"Error toggling exchange in MongoDB: {ex}", exc_info=True)
                 return jsonify({'error': 'Failed to update exchange in DB'}), 500
 
-        @self.app.route('/api/exchanges/<exchange_name>/market-symbols', methods=['GET'])
+        @self.app.route('/api/exchanges/<exchange_name>/market-symbols', methods=['GET', 'POST'])
         def search_market_symbols(exchange_name):
             """Search symbols from the exchange's market. Looks up exchange_accounts by _id."""
             query = (request.args.get('q') or '').strip().upper()
@@ -484,12 +513,30 @@ class Dashboard:
                     logger.warning(f"❌ Exchange {exchange_name} has no 'type' field or it's empty")
                     logger.warning(f"Document keys: {list(doc.keys())}")
                     return jsonify({'error': 'Exchange type not configured'}), 400
+                req_data = request.get_json(silent=True) or {}
+                creds = doc.get('credentials') or {}
+                try:
+                    from secrets_manager import decrypt_credentials_dict
+                    creds = decrypt_credentials_dict(creds)
+                except Exception:
+                    pass
+                req_api_key = (req_data.get('api_key') or '').strip()
+                if req_api_key == '***':
+                    req_api_key = ''
+                req_api_secret = (req_data.get('api_secret') or '').strip()
+                if req_api_secret == '***':
+                    req_api_secret = ''
                 exchange = {
-                    'base_url': doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url') or '',
-                    'testnet': doc.get('testnet', False),
-                    'trading_mode': doc.get('trading_mode', 'spot'),
-                    'api_key': '', 'api_secret': '',
+                    'base_url': req_data.get('base_url') or doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url') or '',
+                    'testnet': req_data.get('testnet') if 'testnet' in req_data else doc.get('testnet', False),
+                    'trading_mode': req_data.get('trading_mode') or doc.get('trading_mode', 'spot'),
+                    'api_key': req_api_key or (creds.get('api_key') or '').strip(),
+                    'api_secret': '',
                 }
+                if req_api_secret:
+                    exchange['api_secret'] = req_api_secret
+                else:
+                    exchange['api_secret'] = (creds.get('api_secret') or '').strip()
                 logger.info(f"Fetching symbols: exchange_type={ex_type}, trading_mode={exchange.get('trading_mode')}, query={query}")
                 symbols = self._fetch_market_symbols(ex_type, exchange, query)
                 logger.info(f"✅ market-symbols returned {len(symbols)} results for {ex_type} with query '{query}'")
@@ -1383,4 +1430,3 @@ class Dashboard:
         """
         logger.info(f"Starting dashboard on {host}:{port}")
         self.app.run(host=host, port=port, debug=debug)
-
