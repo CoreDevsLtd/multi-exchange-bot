@@ -86,6 +86,22 @@ def _alpaca_use_paper(exchange: dict) -> bool:
     return bool(exchange.get('paper_trading', exchange.get('use_paper', True)))
 
 
+def _resolve_alpaca_base_url(exchange: dict, override_base_url: str = '') -> str:
+    """Resolve Alpaca API base URL with environment-safe defaults.
+
+    If a stored base_url points to official Alpaca domains, prefer the URL that
+    matches the selected paper/live mode to avoid paper keys hitting live API.
+    """
+    use_paper = _alpaca_use_paper(exchange)
+    desired = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
+    raw = (override_base_url or exchange.get('base_url') or '').strip().rstrip('/')
+    if not raw:
+        return desired
+    if 'alpaca.markets' in raw:
+        return desired
+    return raw
+
+
 def _compute_drawdown_profit(trade: dict, db) -> tuple:
     """
     Compute max drawdown % and max profit % for a closed trade on demand (REQ-3.5).
@@ -171,8 +187,9 @@ def _compute_drawdown_profit(trade: dict, db) -> tuple:
             use_paper = _alpaca_use_paper(ex_acc)
             default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
             client = AlpacaClient(
-                api_key=api_key, api_secret=api_secret,
-                base_url=ex_acc.get('base_url') or default_base,
+                api_key=api_key,
+                api_secret=api_secret,
+                base_url=_resolve_alpaca_base_url(ex_acc),
             )
             bars = client.get_bars(symbol, start_iso, end_iso)
             highs = [float(b['h']) for b in bars if 'h' in b]
@@ -456,7 +473,7 @@ class Dashboard:
                 'can_trade': False,
                 'balances': {}
             }
-            can_validate = (api_key and api_secret) or ex_type == 'ibkr'
+            can_validate = (api_key and api_secret) and ex_type != 'ibkr'
             if can_validate:
                 try:
                     client = None
@@ -465,9 +482,11 @@ class Dashboard:
                         client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://api.mexc.com')
                     elif ex_type == 'alpaca':
                         from alpaca_client import AlpacaClient
-                        use_paper = _alpaca_use_paper(ex_acc)
-                        default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
-                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or default_base)
+                        client = AlpacaClient(
+                            api_key=api_key,
+                            api_secret=api_secret,
+                            base_url=_resolve_alpaca_base_url(ex_acc, base_url),
+                        )
                     elif ex_type == 'bybit':
                         from bybit_client import BybitClient
                         proxy = (ex_acc.get('proxy') or '').strip() or None
@@ -478,12 +497,7 @@ class Dashboard:
                                              trading_mode=ex_acc.get('trading_mode', 'spot'),
                                              leverage=int(ex_acc.get('leverage') or 1), proxy=proxy)
                     elif ex_type == 'ibkr':
-                        from ibkr_client import IBKRClient
-                        client = IBKRClient(api_key=api_key or '', api_secret=api_secret or '',
-                                            base_url=(base_url or 'https://localhost:5000').rstrip('/'),
-                                            account_id=ex_acc.get('account_id', ''),
-                                            use_paper=ex_acc.get('use_paper', False),
-                                            leverage=int(ex_acc.get('leverage') or 1))
+                        client = None
                     if client:
                         validation = client.validate_connection()
                         exchange_status['connected'] = validation.get('connected', False)
@@ -693,6 +707,8 @@ class Dashboard:
                         update['client_id'] = 1
                 if 'paper_trading' in data and exchange_type == 'ibkr':
                     update['paper_trading'] = bool(data['paper_trading'])
+                if exchange_type == 'ibkr' and update.get('enabled') is True:
+                    update['enabled'] = False
                 if update:
                     db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
                     self._invalidate_executors()
@@ -724,6 +740,16 @@ class Dashboard:
             try:
                 from mongo_db import get_db
                 db = get_db()
+                doc = db.exchange_accounts.find_one({'_id': exchange_name}, {'type': 1})
+                ex_type = (doc.get('type') or '').lower() if doc else ''
+                if ex_type == 'ibkr' and enabled:
+                    db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'enabled': False}})
+                    self._invalidate_executors()
+                    return jsonify({
+                        'status': 'success',
+                        'message': 'IBKR is temporarily disabled',
+                        'enabled': False
+                    })
                 res = db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'enabled': enabled}})
                 if res.matched_count == 0:
                     return jsonify({'error': 'Exchange account not found'}), 404
@@ -1256,6 +1282,8 @@ class Dashboard:
                     'client_id': int(data.get('client_id') or 1),
                     'paper_trading': bool(data.get('paper_trading', True)) if ex_type == 'ibkr' else None,
                 }
+                if ex_type == 'ibkr':
+                    doc['enabled'] = False
                 db = get_db()
                 db.exchange_accounts.update_one({'_id': ex_id}, {'$set': doc}, upsert=True)
                 self._invalidate_executors()
@@ -1388,6 +1416,8 @@ class Dashboard:
             if exchange_type != 'ibkr':
                 if not api_key or not api_secret or api_secret == '***':
                     return jsonify({'error': 'API key and secret required. Enter both and save, or re-enter the secret if it shows ***.'}), 400
+            else:
+                return jsonify({'error': 'IBKR is temporarily disabled'}), 503
 
             try:
                 if exchange_type == 'mexc':
@@ -1397,9 +1427,11 @@ class Dashboard:
                     validation = client.validate_connection()
                 elif exchange_type == 'alpaca':
                     from alpaca_client import AlpacaClient
-                    default_base = 'https://paper-api.alpaca.markets' if paper_trading else 'https://api.alpaca.markets'
-                    client = AlpacaClient(api_key=api_key, api_secret=api_secret,
-                                          base_url=base_url or default_base)
+                    client = AlpacaClient(
+                        api_key=api_key,
+                        api_secret=api_secret,
+                        base_url=_resolve_alpaca_base_url({'paper_trading': paper_trading}, base_url),
+                    )
                     validation = client.validate_connection()
                 elif exchange_type == 'bybit':
                     from bybit_client import BybitClient
@@ -1700,6 +1732,8 @@ class Dashboard:
         @self.app.route('/api/ibkr/setup', methods=['POST'])
         def ibkr_setup():
             """Start an ibeam Docker container for an IBKR account"""
+            return jsonify({'error': 'IBKR is temporarily disabled'}), 503
+
             import docker
             from datetime import datetime
 
@@ -1779,6 +1813,8 @@ class Dashboard:
         @self.app.route('/api/ibkr/status/<exchange_id>', methods=['GET'])
         def ibkr_status(exchange_id):
             """Check if ibeam container is running for an IBKR exchange"""
+            return jsonify({'running': False, 'port': None, 'container_name': None, 'disabled': True}), 200
+
             import docker
 
             try:
@@ -1817,6 +1853,8 @@ class Dashboard:
         @self.app.route('/api/ibkr/stop/<exchange_id>', methods=['DELETE'])
         def ibkr_stop(exchange_id):
             """Stop and remove ibeam Docker container for an IBKR exchange"""
+            return jsonify({'error': 'IBKR is temporarily disabled'}), 503
+
             import docker
 
             try:

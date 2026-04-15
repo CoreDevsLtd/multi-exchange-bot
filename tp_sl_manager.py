@@ -217,6 +217,30 @@ class TPSLManager:
                 logger.warning("⚠️  Bybit SL not on exchange; using price monitor fallback.")
                 return 'MONITORED'
 
+            # Alpaca crypto spot: place native stop order on exchange.
+            if self.exchange_name == 'alpaca' and hasattr(self.client, '_is_crypto_symbol'):
+                try:
+                    if self.client._is_crypto_symbol(symbol):
+                        sl_side = 'SELL' if side.upper() == 'BUY' else 'BUY'
+                        response = self.client.place_order(
+                            symbol=symbol,
+                            side=sl_side,
+                            order_type='stop',
+                            quantity=quantity,
+                            stop_price=sl_price,
+                            time_in_force='gtc'
+                        )
+                        sl_order_id = str(response.get('id') or response.get('orderId') or '')
+                        if sl_order_id:
+                            if position:
+                                position['stop_loss_order_id'] = sl_order_id
+                                position['exchange_sl_active'] = True
+                            self.position_manager.save_position(symbol)
+                            logger.info(f"✅ Alpaca crypto native SL placed: {sl_order_id} @ {sl_price}")
+                            return sl_order_id
+                except Exception as e:
+                    logger.warning(f"⚠️  Alpaca crypto native SL placement failed; using monitor fallback: {e}")
+
             logger.warning("⚠️  Spot API: no native SL order. Using price monitoring.")
             if position:
                 position['stop_loss_order_id'] = 'MONITORED'

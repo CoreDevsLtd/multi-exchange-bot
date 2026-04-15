@@ -216,6 +216,7 @@ class TradingExecutor:
         """
         symbol = self._symbol_for_exchange(symbol)
         try:
+            alpaca_native_bracket = False
             # Block duplicate BUY if an open position already exists for this symbol.
             # Pine Script position tracking (inLong var) is the primary guard;
             # this is a second layer of defence in case the strategy is reloaded
@@ -284,8 +285,24 @@ class TradingExecutor:
                 if self.exchange_name == 'alpaca' and hasattr(self.client, '_is_crypto_symbol') and not self.client._is_crypto_symbol(symbol):
                     if hasattr(self.client, 'is_market_open') and not self.client.is_market_open():
                         logger.warning(f"⚠️  US equities market is closed. Alpaca stock order for {symbol} will be queued for next market open (day order).")
-                logger.info(f"Executing BUY order: {symbol}, Size: {position_size_usdt} {quote_currency}")
-                order_response = self.client.place_market_buy(symbol, position_size_usdt)
+                if self.exchange_name == 'alpaca' and hasattr(self.client, '_is_crypto_symbol') and not self.client._is_crypto_symbol(symbol):
+                    tp_price = entry_price * (1 + float(self.tp_sl_manager.take_profit_percent) / 100.0)
+                    sl_price = entry_price * (1 - float(self.tp_sl_manager.stop_loss_percent) / 100.0)
+                    logger.info(
+                        f"Executing BUY order with Alpaca native bracket: {symbol}, Size: {position_size_usdt} {quote_currency}, "
+                        f"TP={tp_price}, SL={sl_price}"
+                    )
+                    order_response = self.client.place_market_buy(
+                        symbol,
+                        position_size_usdt,
+                        order_class='bracket',
+                        take_profit_price=tp_price,
+                        stop_loss_price=sl_price,
+                    )
+                    alpaca_native_bracket = True
+                else:
+                    logger.info(f"Executing BUY order: {symbol}, Size: {position_size_usdt} {quote_currency}")
+                    order_response = self.client.place_market_buy(symbol, position_size_usdt)
             
             # Handle different exchange order ID formats
             order_id = None
@@ -371,6 +388,34 @@ class TradingExecutor:
                 quantity=executed_qty,
                 order_id=order_id
             )
+
+            if alpaca_native_bracket:
+                tp_orders = {}
+                legs = order_response.get('legs') if isinstance(order_response.get('legs'), list) else []
+                for leg in legs:
+                    leg_type = (leg.get('type') or '').lower()
+                    leg_id = str(leg.get('id') or '')
+                    if not leg_id:
+                        continue
+                    if leg_type in ('stop', 'stop_limit'):
+                        position['stop_loss_order_id'] = leg_id
+                    elif leg_type == 'limit':
+                        tp_orders['tp1'] = leg_id
+
+                position['exchange_sl_active'] = bool(position.get('stop_loss_order_id'))
+                if tp_orders:
+                    position['tp_orders'].update(tp_orders)
+                self.position_manager.save_position(symbol)
+                logger.info(
+                    f"Alpaca native bracket active: sl_order_id={position.get('stop_loss_order_id')}, "
+                    f"tp_orders={list(tp_orders.values())}"
+                )
+                return {
+                    'entry_order': order_response,
+                    'position': position,
+                    'stop_loss_order_id': position.get('stop_loss_order_id'),
+                    'tp_orders': tp_orders
+                }
             
             # Place initial stop-loss (5% from entry)
             sl_order_id = self.tp_sl_manager.place_initial_stop_loss(

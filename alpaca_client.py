@@ -32,7 +32,22 @@ class AlpacaClient:
         # Trim whitespace to prevent errors
         self.api_key = api_key.strip() if api_key else ''
         self.api_secret = api_secret.strip() if api_secret else ''
-        self.base_url = base_url.rstrip('/')
+        normalized_base_url = (base_url or '').strip().rstrip('/')
+        # Some saved configs include a trailing "/v2". Endpoints in this client
+        # already include "/v2/*", so normalize to avoid "/v2/v2/*" 404s.
+        if normalized_base_url.endswith('/v2'):
+            normalized_base_url = normalized_base_url[:-3]
+        # Safety guard: paper Alpaca keys (typically "PK...") must not be routed
+        # to live base URL, even if stale DB flags point to live.
+        key_prefix = self.api_key[:2].upper() if self.api_key else ''
+        if 'alpaca.markets' in normalized_base_url:
+            if key_prefix == 'PK' and 'paper-api.alpaca.markets' not in normalized_base_url:
+                logger.warning("Detected paper Alpaca key with live base URL; forcing paper endpoint")
+                normalized_base_url = 'https://paper-api.alpaca.markets'
+            elif key_prefix == 'AK' and 'paper-api.alpaca.markets' in normalized_base_url:
+                logger.warning("Detected live Alpaca key with paper base URL; forcing live endpoint")
+                normalized_base_url = 'https://api.alpaca.markets'
+        self.base_url = normalized_base_url
         # Market data API base URL (separate from trading API)
         self.data_base_url = "https://data.alpaca.markets"
         self.session = requests.Session()
@@ -312,20 +327,20 @@ class AlpacaClient:
             Dictionary of asset balances
         """
         balances = {}
-        
+
         try:
             account = self.get_account_info()
-            
-            # Add cash balance
-            cash = float(account.get('cash', 0))
-            if cash > 0:
-                balances['USD'] = {
-                    'free': cash,
-                    'locked': cash - float(account.get('buying_power', 0)),
-                    'total': cash
-                }
-            
-            # Add position balances
+            cash = float(account.get('cash') or account.get('equity') or 0)
+            buying_power = float(account.get('buying_power') or 0)
+            balances['USD'] = {
+                'free': cash,
+                'locked': cash - buying_power,
+                'total': cash
+            }
+        except Exception as e:
+            logger.error(f"Error getting account cash balance: {e}")
+
+        try:
             positions = self.get_positions()
             for pos in positions:
                 symbol = pos['symbol']
@@ -336,10 +351,9 @@ class AlpacaClient:
                         'locked': 0.0,
                         'total': abs(qty)
                     }
-            
         except Exception as e:
-            logger.error(f"Error getting balances: {e}")
-        
+            logger.error(f"Error getting position balances: {e}")
+
         return balances
     
     def get_positions(self) -> List[Dict]:
@@ -568,7 +582,11 @@ class AlpacaClient:
                    stop_price: Optional[float] = None,
                    time_in_force: str = 'day',
                    price: Optional[float] = None,
-                   reduce_only: bool = False) -> Dict:
+                   reduce_only: bool = False,
+                   order_class: Optional[str] = None,
+                   take_profit_price: Optional[float] = None,
+                   stop_loss_price: Optional[float] = None,
+                   stop_loss_limit_price: Optional[float] = None) -> Dict:
         """
         Place an order (supports both stocks and crypto)
         
@@ -636,10 +654,28 @@ class AlpacaClient:
                     raise ValueError("Stop-limit orders require limit_price")
                 order_data['limit_price'] = str(limit_price)
         
+        # Alpaca bracket/OCO is supported for stocks/ETF. Crypto does not support
+        # order_class in the same way, so keep crypto as plain orders.
+        if order_class:
+            if is_crypto:
+                logger.warning("Ignoring order_class for Alpaca crypto order")
+            else:
+                order_data['order_class'] = str(order_class).lower()
+                if take_profit_price:
+                    order_data['take_profit'] = {'limit_price': str(take_profit_price)}
+                if stop_loss_price:
+                    order_data['stop_loss'] = {'stop_price': str(stop_loss_price)}
+                    if stop_loss_limit_price:
+                        order_data['stop_loss']['limit_price'] = str(stop_loss_limit_price)
+
         logger.info(f"Placing {side} order: {order_data}")
         return self._make_request('POST', '/v2/orders', data=order_data)
     
-    def place_market_buy(self, symbol: str, notional: float) -> Dict:
+    def place_market_buy(self, symbol: str, notional: float,
+                         order_class: Optional[str] = None,
+                         take_profit_price: Optional[float] = None,
+                         stop_loss_price: Optional[float] = None,
+                         stop_loss_limit_price: Optional[float] = None) -> Dict:
         """
         Place a market buy order (supports both stocks and crypto)
         
@@ -676,7 +712,11 @@ class AlpacaClient:
                 symbol=formatted_symbol,
                 side='buy',
                 order_type='market',
-                notional=notional_rounded
+                notional=notional_rounded,
+                order_class=order_class,
+                take_profit_price=take_profit_price,
+                stop_loss_price=stop_loss_price,
+                stop_loss_limit_price=stop_loss_limit_price,
             )
         except Exception as e:
             logger.error(f"❌ Failed to place Alpaca market buy order for {formatted_symbol}: {e}")

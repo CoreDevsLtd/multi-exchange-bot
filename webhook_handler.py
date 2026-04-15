@@ -86,13 +86,13 @@ class WebhookHandler:
                             from alpaca_client import AlpacaClient
                             use_paper = bool(ex_acc.get('paper_trading', ex_acc.get('use_paper', True)))
                             default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
-                            client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or default_base)
+                            alpaca_base = (base_url or '').strip().rstrip('/')
+                            if not alpaca_base or 'alpaca.markets' in alpaca_base:
+                                alpaca_base = default_base
+                            client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=alpaca_base)
                         elif ex_type == 'ibkr':
-                            from ibkr_client import IBKRClient
-                            gateway_host = ex_acc.get('gateway_host', '127.0.0.1')
-                            gateway_port = int(ex_acc.get('gateway_port', 7497))
-                            client_id = int(ex_acc.get('client_id', 1))
-                            client = IBKRClient(host=gateway_host, port=gateway_port, client_id=client_id)
+                            logger.info(f"IBKR is temporarily disabled; skipping executor for {ex_id}")
+                            continue
                         elif ex_type == 'bybit':
                             from bybit_client import BybitClient
                             proxy = (ex_acc.get('proxy') or '').strip() or None

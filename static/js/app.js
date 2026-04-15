@@ -29,6 +29,8 @@ const BASE_URL_DEFAULTS = {
   ibkr:   '', // Not used for IBKR (uses Gateway/TWS direct connection)
 };
 
+const IBKR_TEMP_DISABLED = true;
+
 /* ============================================================
    STORE — single source of truth
    ============================================================ */
@@ -164,9 +166,16 @@ const api = {
   },
 
   async toggleExchange(id, enabled) {
+    const ex = store.exchanges[id] ?? {};
+    const type = (ex.type ?? '').toLowerCase();
+    if (IBKR_TEMP_DISABLED && type === 'ibkr' && enabled) {
+      if (store.exchanges[id]) store.exchanges[id].enabled = false;
+      toast('IBKR is temporarily disabled', 'info');
+      return;
+    }
     const r = await api.post(`/api/exchanges/${id}/toggle`, { enabled }).catch(() => null);
     if (r?.status === 'success' && store.exchanges[id]) {
-      store.exchanges[id].enabled = enabled;
+      store.exchanges[id].enabled = !!r.enabled;
       toast(enabled ? 'Exchange enabled' : 'Exchange disabled', 'success');
     }
   },
@@ -410,12 +419,21 @@ function fmtTimeSince(sec) {
 
 function fmtBalance(bals) {
   if (!bals || typeof bals !== 'object') return '—';
-  return Object.entries(bals)
+  const formatted = Object.entries(bals)
     .map(([a, b]) => {
       const v = parseFloat(typeof b === 'object' ? (b.total ?? b.free ?? 0) : b) || 0;
       return v > 0 ? `${a}: ${v >= 1 ? v.toFixed(2) : v.toFixed(4)}` : null;
     })
-    .filter(Boolean).slice(0, 4).join(' · ') || '—';
+    .filter(Boolean).slice(0, 4).join(' · ');
+
+  if (formatted) return formatted;
+
+  const usdTotal = parseFloat(
+    typeof bals.USD === 'object' ? (bals.USD.total ?? bals.USD.free ?? 0) : (bals.USD ?? 0)
+  ) || 0;
+  if ('USD' in bals) return `USD: ${usdTotal.toFixed(2)}`;
+
+  return '—';
 }
 
 function exchangeAbbr(type) {
@@ -453,11 +471,12 @@ const mixin = {
 
 /** Toggle switch */
 const CToggle = {
-  props: ['modelValue'],
+  props: ['modelValue', 'disabled'],
   emits: ['update:modelValue'],
   template: `
     <label class="c-toggle">
       <input type="checkbox" :checked="modelValue"
+             :disabled="!!disabled"
              @change="$emit('update:modelValue', $event.target.checked)">
       <span class="c-toggle-track"></span>
     </label>`,
@@ -563,6 +582,7 @@ const ExchangeModal = {
     originalLeverage: 1,
   }),
   computed: {
+    IBKR_TEMP_DISABLED() { return IBKR_TEMP_DISABLED; },
     isIbkr()          { return this.type === 'ibkr'; },
     isBybit()         { return this.type === 'bybit'; },
     isMexc()          { return this.type === 'mexc'; },
@@ -591,7 +611,7 @@ const ExchangeModal = {
               </div>
 
               <label class="check-row">
-                <input v-model="form.enabled" type="checkbox"> Enable this exchange
+                <input v-model="form.enabled" type="checkbox" :disabled="isIbkr && IBKR_TEMP_DISABLED"> Enable this exchange
               </label>
 
               <template v-if="!isIbkr">
@@ -741,8 +761,12 @@ const ExchangeModal = {
               </template>
 
               <template v-if="isIbkr">
+                <div class="alert alert-warning">
+                  <i class="fas fa-pause-circle"></i>
+                  IBKR is temporarily disabled. Configuration and execution are paused.
+                </div>
                 <label class="check-row">
-                  <input v-model="form.paper_trading" type="checkbox"> Paper Trading (Demo Account)
+                  <input v-model="form.paper_trading" type="checkbox" :disabled="IBKR_TEMP_DISABLED"> Paper Trading (Demo Account)
                 </label>
 
                 <!-- ibeam Setup Section -->
@@ -757,11 +781,11 @@ const ExchangeModal = {
 
                 <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
                   <button v-if="!ibkrContainerRunning" class="btn btn-primary" type="button"
-                          @click="setupIbeam" :disabled="ibkrSetting">
+                          @click="setupIbeam" :disabled="ibkrSetting || IBKR_TEMP_DISABLED">
                     <i class="fas fa-play"></i> {{ ibkrSetting ? 'Starting…' : 'Start ibeam' }}
                   </button>
                   <button v-if="ibkrContainerRunning" class="btn btn-danger" type="button"
-                          @click="stopIbeam" :disabled="ibkrSetting">
+                          @click="stopIbeam" :disabled="ibkrSetting || IBKR_TEMP_DISABLED">
                     <i class="fas fa-stop"></i> {{ ibkrSetting ? 'Stopping…' : 'Stop Container' }}
                   </button>
                   <span v-if="ibkrContainerRunning" style="color:#4ade80;font-size:13px;display:flex;align-items:center;gap:6px">
@@ -790,7 +814,7 @@ const ExchangeModal = {
 
             </div>
             <div class="modal-foot">
-              <button class="btn btn-ghost" type="button" @click="testConn" :disabled="testing">
+              <button class="btn btn-ghost" type="button" @click="testConn" :disabled="testing || (isIbkr && IBKR_TEMP_DISABLED)">
                 <i class="fas fa-plug"></i> {{ testing ? 'Testing…' : 'Test' }}
               </button>
               <button class="btn" @click="close">Cancel</button>
@@ -813,6 +837,7 @@ const ExchangeModal = {
                 use_sub_account: false, sub_account_id: '', proxy: '', symbol: null,
                 gateway_host: '127.0.0.1', gateway_port: 7497, client_id: 1 },
       });
+      if (IBKR_TEMP_DISABLED && this.type === 'ibkr') this.form.enabled = false;
       this.open = true;
     },
     showEdit(exchange) {
@@ -851,6 +876,7 @@ const ExchangeModal = {
       });
       // Check if IBKR container is running
       if (this.type === 'ibkr') {
+        if (IBKR_TEMP_DISABLED) this.form.enabled = false;
         api.ibkrContainerStatus(exchange._id).then(status => {
           this.ibkrContainerRunning = status?.running ?? false;
           if (status?.port) this.form.gateway_port = status.port;
@@ -876,6 +902,7 @@ const ExchangeModal = {
       if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
       if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
       if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = parseInt(this.form.gateway_port); p.client_id = parseInt(this.form.client_id); p.paper_trading = this.form.paper_trading; }
+      if (IBKR_TEMP_DISABLED && this.isIbkr) p.enabled = false;
       return p;
     },
     async onSymbolSearch() {
@@ -890,12 +917,20 @@ const ExchangeModal = {
       }, 250);
     },
     async testConn() {
+      if (IBKR_TEMP_DISABLED && this.isIbkr) {
+        toast('IBKR is temporarily disabled', 'info');
+        return;
+      }
       this.testing = true;
       const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
       await api.testConnection(id, this.payload());
       this.testing = false;
     },
     async setupIbeam() {
+      if (IBKR_TEMP_DISABLED) {
+        toast('IBKR is temporarily disabled', 'info');
+        return;
+      }
       if (!this.ibkrUser.trim() || !this.ibkrPass.trim()) {
         toast('Enter IBKR username and password', 'error');
         return;
@@ -913,6 +948,10 @@ const ExchangeModal = {
       this.ibkrSetting = false;
     },
     async stopIbeam() {
+      if (IBKR_TEMP_DISABLED) {
+        toast('IBKR is temporarily disabled', 'info');
+        return;
+      }
       this.ibkrSetting = true;
       const id = this.exchangeId ?? `${this.accountId}_${this.type}`;
       const ok = await api.ibkrStop(id);
@@ -978,6 +1017,7 @@ const ExchangeModal = {
       if (nextType === 'bybit') this.form.paper_trading = false;
       if (nextType === 'alpaca' || nextType === 'ibkr') this.form.paper_trading = true;
       if (nextType === 'ibkr') this.form.gateway_port = this.form.paper_trading ? 7497 : 7496;
+      if (IBKR_TEMP_DISABLED && nextType === 'ibkr') this.form.enabled = false;
     },
     'form.paper_trading'(paper) {
       if (this.type === 'ibkr') this.form.gateway_port = paper ? 7497 : 7496;
@@ -1058,9 +1098,11 @@ const ExchangeCard = {
   emits: ['configure'],
   data: () => ({}),
   computed: {
+    IBKR_TEMP_DISABLED() { return IBKR_TEMP_DISABLED; },
     ex()        { return store.exchanges[this.exchangeId] ?? {}; },
     status()    { return store.exStatus[this.exchangeId] ?? {}; },
     type()      { return (this.ex.type ?? this.exchangeId).toLowerCase(); },
+    isIbkr()    { return this.type === 'ibkr'; },
     connected() { return !!this.status.connected; },
     enabled()   { return this.ex.enabled !== false; },
     symbol()    { return this.ex.symbol ?? null; },
@@ -1106,14 +1148,14 @@ const ExchangeCard = {
       </div>
       <div class="ex-card-foot">
         <div class="ex-card-foot-l">
-          <button class="btn btn-sm" @click="$emit('configure', exchangeId)">
+          <button class="btn btn-sm" @click="$emit('configure', exchangeId)" :disabled="isIbkr && IBKR_TEMP_DISABLED">
             <i class="fas fa-cog"></i> Configure
           </button>
           <button class="btn btn-sm btn-danger btn-icon" @click="del">
             <i class="fas fa-trash"></i>
           </button>
         </div>
-        <c-toggle :model-value="enabled" @update:model-value="toggle"></c-toggle>
+        <c-toggle :model-value="enabled" :disabled="isIbkr && IBKR_TEMP_DISABLED" @update:model-value="toggle"></c-toggle>
       </div>
     </div>`,
   methods: {
