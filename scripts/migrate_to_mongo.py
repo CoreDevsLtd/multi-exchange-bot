@@ -68,14 +68,34 @@ if ops:
 
 # 3) Central risk
 risk = cfg.get('risk_management', {}) or {}
+legacy_settings = cfg.get('trading_settings', {}) or {}
+bybit_risk = risk.get('bybit', {}) if isinstance(risk.get('bybit'), dict) else {}
+alpaca_risk = risk.get('alpaca', {}) if isinstance(risk.get('alpaca'), dict) else {}
 central = {
     '_id': 'default',
-    'stop_loss_percent': risk.get('stop_loss_percent', 5.0),
-    'take_profit_percent': risk.get('take_profit_percent', 5.0),
-    'position_size_percent': cfg.get('trading_settings', {}).get('position_size_percent', 20.0),
-    'use_percentage': cfg.get('trading_settings', {}).get('use_percentage', True),
-    'warn_existing_positions': cfg.get('trading_settings', {}).get('warn_existing_positions', True),
-    'overrides': {}
+    'bybit': {
+        'stop_loss_percent': bybit_risk.get('stop_loss_percent', risk.get('stop_loss_percent', 5.0)),
+        'take_profit_percent': bybit_risk.get('take_profit_percent', risk.get('take_profit_percent', 5.0)),
+        'position_size_percent': bybit_risk.get('position_size_percent', legacy_settings.get('position_size_percent', 20.0)),
+        'position_size_fixed': bybit_risk.get('position_size_fixed', legacy_settings.get('position_size_fixed')) or None,
+        'use_percentage': bybit_risk.get('use_percentage', legacy_settings.get('use_percentage', True)),
+        'warn_existing_positions': bybit_risk.get('warn_existing_positions', legacy_settings.get('warn_existing_positions', True)),
+        'tp_mode': bybit_risk.get('tp_mode', 'ladder'),
+        'tp1_target': bybit_risk.get('tp1_target', risk.get('tp1_target', 1.0)),
+        'tp2_target': bybit_risk.get('tp2_target', risk.get('tp2_target', 2.0)),
+        'tp3_target': bybit_risk.get('tp3_target', risk.get('tp3_target', 5.0)),
+        'tp4_target': bybit_risk.get('tp4_target', risk.get('tp4_target', 6.5)),
+        'tp5_target': bybit_risk.get('tp5_target', risk.get('tp5_target', 8.0)),
+    },
+    'alpaca': {
+        'stop_loss_percent': alpaca_risk.get('stop_loss_percent', risk.get('stop_loss_percent', 5.0)),
+        'take_profit_percent': alpaca_risk.get('take_profit_percent', risk.get('take_profit_percent', 5.0)),
+        'position_size_percent': alpaca_risk.get('position_size_percent', legacy_settings.get('position_size_percent', 20.0)),
+        'position_size_fixed': alpaca_risk.get('position_size_fixed', legacy_settings.get('position_size_fixed')) or None,
+        'use_percentage': alpaca_risk.get('use_percentage', legacy_settings.get('use_percentage', True)),
+        'warn_existing_positions': alpaca_risk.get('warn_existing_positions', legacy_settings.get('warn_existing_positions', True)),
+        'tp_mode': alpaca_risk.get('tp_mode', 'single'),
+    },
 }
 print('Upserting central risk')
 db.central_risk_management.update_one({'_id': 'default'}, {'$set': central}, upsert=True)

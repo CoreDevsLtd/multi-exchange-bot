@@ -189,6 +189,17 @@ class TestAlpacaClientMocked(unittest.TestCase):
         price = self.client.get_ticker_price('BTCUSD')
         self.assertEqual(price, 68500.0)
 
+    def test_get_position_crypto_uses_legacy_symbol(self):
+        """get_position uses legacy no-slash symbol for Alpaca positions endpoint."""
+        pos_response = {'symbol': 'BTCUSD', 'qty': '0.5'}
+        self.mock_session.get.return_value = make_mock_response(pos_response)
+
+        result = self.client.get_position('BTC/USD')
+        self.assertEqual(result['symbol'], 'BTCUSD')
+
+        called_url = self.mock_session.get.call_args[0][0]
+        self.assertTrue(called_url.endswith('/v2/positions/BTCUSD'), f"Unexpected URL: {called_url}")
+
     # ------------------------------------------------------------------
     # 6. place_market_buy
     # ------------------------------------------------------------------
@@ -422,12 +433,32 @@ class TestAlpacaClientMocked(unittest.TestCase):
     def test_close_position_by_symbol_crypto(self):
         """close_position_by_symbol formats crypto symbol correctly."""
         order_response = {'id': 'close-crypto', 'status': 'accepted'}
+        self.mock_session.get.return_value = make_mock_response([])
         self.mock_session.delete.return_value = make_mock_response(order_response)
 
         self.client.close_position_by_symbol('BTCUSD')
 
         called_url = self.mock_session.delete.call_args[0][0]
-        self.assertIn('BTC/USD', called_url, f"Crypto symbol not formatted: {called_url}")
+        self.assertTrue(called_url.endswith('/v2/positions/BTCUSD'), f"Unexpected URL: {called_url}")
+
+    def test_close_position_by_symbol_retries_with_available_qty(self):
+        """On insufficient-balance full close, client retries with available qty."""
+        self.mock_session.get.return_value = make_mock_response([])  # no open orders in preflight
+        first_error = {
+            'code': 40310000,
+            'message': 'insufficient balance for DOGE (requested: 51636.358526511, available: 1164.729891577)'
+        }
+        success = {'id': 'close-retry', 'status': 'accepted'}
+        self.mock_session.delete.side_effect = [
+            make_mock_response(first_error, status_code=403),
+            make_mock_response(success, status_code=200),
+        ]
+
+        result = self.client.close_position_by_symbol('DOGEUSD')
+        self.assertEqual(result['id'], 'close-retry')
+        self.assertEqual(self.mock_session.delete.call_count, 2)
+        retry_params = self.mock_session.delete.call_args_list[1][1].get('params') or {}
+        self.assertEqual(retry_params.get('qty'), '1164.729891577')
 
     # ------------------------------------------------------------------
     # Full buy → status → sell flow

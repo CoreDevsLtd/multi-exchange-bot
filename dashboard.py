@@ -7,6 +7,7 @@ import os
 import logging
 import time
 import requests
+from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template, request, jsonify
 import secrets
 
@@ -16,6 +17,179 @@ logger = logging.getLogger(__name__)
 # Key: exchange_account_id, Value: {'symbols': [...], 'ts': epoch_seconds}
 _alpaca_symbol_cache: dict = {}
 _ALPACA_CACHE_TTL = 3600  # 1 hour
+
+
+def _portfolio_date_range_from_request(req) -> tuple[str, str]:
+    """
+    Build ISO date-time bounds for portfolio queries.
+    Defaults to last 30 days if no explicit date range is provided.
+    """
+    start_raw = (req.args.get('start_date') or '').strip()
+    end_raw = (req.args.get('end_date') or '').strip()
+
+    now = datetime.now(timezone.utc)
+    start_dt = now - timedelta(days=30)
+    end_dt = now
+
+    try:
+        if start_raw:
+            start_dt = datetime.strptime(start_raw, '%Y-%m-%d').replace(tzinfo=timezone.utc)
+    except Exception:
+        pass
+
+    try:
+        if end_raw:
+            end_dt = datetime.strptime(end_raw, '%Y-%m-%d').replace(
+                tzinfo=timezone.utc, hour=23, minute=59, second=59
+            )
+    except Exception:
+        pass
+
+    if end_dt < start_dt:
+        start_dt, end_dt = end_dt, start_dt
+
+    return (
+        start_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+        end_dt.strftime('%Y-%m-%dT%H:%M:%SZ'),
+    )
+
+
+def _exchange_label(db, exchange_account_id: str) -> str:
+    """Return a human-readable label for an exchange account."""
+    if not exchange_account_id:
+        return 'Unknown'
+    try:
+        ea = db.exchange_accounts.find_one(
+            {'_id': exchange_account_id},
+            {'type': 1, 'trading_mode': 1, 'account_id': 1}
+        )
+        if not ea:
+            return exchange_account_id
+        ex_type = (ea.get('type') or 'exchange').upper()
+        account_name = None
+        account_id = ea.get('account_id')
+        if account_id:
+            acc = db.accounts.find_one({'_id': account_id}, {'name': 1})
+            if acc:
+                account_name = acc.get('name')
+        left = str(account_name or account_id or 'Unknown Account').strip()
+        return f'{left} - {ex_type} - {exchange_account_id}'
+    except Exception:
+        return exchange_account_id
+
+
+def _compute_drawdown_profit(trade: dict, db) -> tuple:
+    """
+    Compute max drawdown % and max profit % for a closed trade on demand (REQ-3.5).
+
+    Fetches OHLCV candles from the exchange that executed the trade, covering the
+    trade's open-to-close window, then calculates:
+      - For LONG  (BUY):  max_profit = (peak_high - entry) / entry * 100
+                          max_drawdown = (entry - trough_low) / entry * 100
+      - For SHORT (SELL): max_profit = (entry - trough_low) / entry * 100
+                          max_drawdown = (peak_high - entry) / entry * 100
+
+    Returns (max_drawdown_pct, max_profit_pct) both rounded to 2dp, or (None, None)
+    on any failure.
+    """
+    entry = float(trade.get('entry_price') or 0)
+    if entry <= 0:
+        return None, None
+
+    symbol = trade.get('symbol', '')
+    direction = (trade.get('direction') or '').upper()
+    ts_open = trade.get('timestamp_open')
+    ts_close = trade.get('timestamp_close')
+    exchange_account_id = trade.get('exchange_account_id')
+
+    if not (symbol and ts_open and ts_close):
+        return None, None
+
+    # Look up exchange account to get credentials and type
+    ex_acc = db.exchange_accounts.find_one({'_id': exchange_account_id}) if exchange_account_id else None
+    if not ex_acc:
+        # Try to find any account that trades this symbol
+        ex_acc = db.exchange_accounts.find_one({'symbol': symbol, 'enabled': True})
+    if not ex_acc:
+        return None, None
+
+    ex_type = (ex_acc.get('type') or '').lower()
+
+    try:
+        from datetime import datetime as _dt
+        t_open  = _dt.fromisoformat(ts_open.replace('Z', '+00:00'))
+        t_close = _dt.fromisoformat(ts_close.replace('Z', '+00:00'))
+        # Add small buffer around trade window
+        start_iso = t_open.strftime('%Y-%m-%dT%H:%M:%SZ')
+        end_iso   = t_close.strftime('%Y-%m-%dT%H:%M:%SZ')
+        start_ms  = int(t_open.timestamp() * 1000)
+        end_ms    = int(t_close.timestamp() * 1000)
+    except Exception:
+        return None, None
+
+    highs = []
+    lows  = []
+
+    try:
+        from secrets_manager import decrypt_credentials_dict
+        creds = decrypt_credentials_dict((ex_acc.get('credentials') or {}))
+    except Exception:
+        creds = ex_acc.get('credentials') or {}
+
+    api_key    = creds.get('api_key') or ex_acc.get('api_key', '')
+    api_secret = creds.get('api_secret') or ex_acc.get('api_secret', '')
+
+    if ex_type == 'bybit':
+        try:
+            from bybit_client import BybitClient
+            client = BybitClient(
+                api_key=api_key, api_secret=api_secret,
+                base_url=(ex_acc.get('base_url') or 'https://api.bybit.com').rstrip('/'),
+                testnet=ex_acc.get('testnet', False),
+                trading_mode=ex_acc.get('trading_mode', 'spot'),
+            )
+            candles = client.get_klines(symbol, start_ms, end_ms)
+            # candle format: [startTime, open, high, low, close, volume, turnover]
+            highs = [float(c[2]) for c in candles if len(c) >= 5]
+            lows  = [float(c[3]) for c in candles if len(c) >= 5]
+        except Exception as e:
+            logger.warning(f"Bybit candle fetch failed: {e}")
+            return None, None
+
+    elif ex_type == 'alpaca':
+        try:
+            from alpaca_client import AlpacaClient
+            client = AlpacaClient(
+                api_key=api_key, api_secret=api_secret,
+                base_url=ex_acc.get('base_url') or 'https://paper-api.alpaca.markets',
+            )
+            bars = client.get_bars(symbol, start_iso, end_iso)
+            highs = [float(b['h']) for b in bars if 'h' in b]
+            lows  = [float(b['l']) for b in bars if 'l' in b]
+        except Exception as e:
+            logger.warning(f"Alpaca bars fetch failed: {e}")
+            return None, None
+    else:
+        return None, None
+
+    if not highs or not lows:
+        return None, None
+
+    peak_high   = max(highs)
+    trough_low  = min(lows)
+
+    if direction == 'BUY':
+        max_profit_pct   = round((peak_high - entry) / entry * 100, 2)
+        max_drawdown_pct = round((entry - trough_low) / entry * 100, 2)
+    else:  # SELL / SHORT
+        max_profit_pct   = round((entry - trough_low) / entry * 100, 2)
+        max_drawdown_pct = round((peak_high - entry) / entry * 100, 2)
+
+    # Clamp drawdown to 0 minimum (price never went against us)
+    max_drawdown_pct = max(0.0, max_drawdown_pct)
+    max_profit_pct   = max(0.0, max_profit_pct)
+
+    return max_drawdown_pct, max_profit_pct
 
 
 class Dashboard:
@@ -41,16 +215,19 @@ class Dashboard:
         # Initialize demo mode (opt-in via DEMO_MODE=true env var)
         from demo_mode import DemoMode
         self.demo_mode = DemoMode()
+        self.webhook_handler = None  # set by wsgi.py after WebhookHandler is created
 
         self._setup_routes()
+
+    def _invalidate_executors(self):
+        """Invalidate WebhookHandler executor cache after any exchange account change."""
+        if self.webhook_handler and hasattr(self.webhook_handler, 'invalidate_executor_cache'):
+            self.webhook_handler.invalidate_executor_cache()
     
     def _load_config_from_mongo(self) -> dict:
         """Load trading settings from MongoDB central_risk_management collection."""
         defaults = {
             'trading_settings': {
-                'position_size_percent': 20.0,
-                'position_size_fixed': '',
-                'use_percentage': True,
                 'webhook_port': 5000,
                 'webhook_host': '0.0.0.0',
                 'warn_existing_positions': True
@@ -60,13 +237,11 @@ class Dashboard:
             }
         }
         try:
-            from mongo_db import get_central_risk
+            from mongo_db import get_central_risk, get_exchange_risk
             risk = get_central_risk()
-            defaults['trading_settings']['position_size_percent'] = float(risk.get('position_size_percent', 20.0))
-            defaults['trading_settings']['use_percentage'] = bool(risk.get('use_percentage', True))
-            defaults['trading_settings']['warn_existing_positions'] = bool(risk.get('warn_existing_positions', True))
-            defaults['trading_settings']['position_size_fixed'] = risk.get('position_size_fixed', '')
-            defaults['risk_management']['stop_loss_percent'] = float(risk.get('stop_loss_percent', 5.0))
+            bybit = get_exchange_risk('bybit', risk)
+            defaults['trading_settings']['warn_existing_positions'] = bool(bybit.get('warn_existing_positions', True))
+            defaults['risk_management']['stop_loss_percent'] = float(bybit.get('stop_loss_percent', 5.0))
             logger.info("✅ Configuration loaded from MongoDB central_risk_management")
         except Exception as e:
             logger.warning(f"Could not load config from MongoDB, using defaults: {e}")
@@ -179,7 +354,9 @@ class Dashboard:
         return self._filter_symbols([s for s in symbols if s], query, limit)
 
     def _fetch_alpaca_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        base_url = (exchange.get('base_url') or 'https://paper-api.alpaca.markets').rstrip('/')
+        use_paper = bool(exchange.get('use_paper', True))
+        default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
+        base_url = (exchange.get('base_url') or default_base).rstrip('/')
         api_key = (exchange.get('api_key') or '').strip()
         api_secret = (exchange.get('api_secret') or '').strip()
         if not api_key or not api_secret or api_secret == '***':
@@ -207,8 +384,16 @@ class Dashboard:
                     headers=headers,
                     timeout=30,  # large response — give it room to breathe
                 )
+                raw_body = resp.text or ''
+                preview_len = 2000
+                logger.info(
+                    f"Alpaca /v2/assets raw response ({asset_class}): "
+                    f"status={resp.status_code}, bytes={len(raw_body)}, preview={raw_body[:preview_len]}"
+                )
                 if resp.status_code == 200:
-                    for a in resp.json():
+                    assets = resp.json()
+                    logger.info(f'Alpaca /v2/assets parsed count ({asset_class}): {len(assets)}')
+                    for a in assets:
                         sym = (a.get('symbol') or '').strip()
                         if sym and a.get('tradable'):
                             all_symbols.append(sym)
@@ -324,15 +509,20 @@ class Dashboard:
             """Get all exchange account configurations (enabled and disabled)."""
             try:
                 from mongo_db import get_db
+                try:
+                    from secrets_manager import decrypt_credentials_dict
+                except Exception:
+                    decrypt_credentials_dict = lambda d: d
                 db = get_db()
                 exs = list(db.exchange_accounts.find({}))
                 mapped = {}
                 for e in exs:
+                    creds = decrypt_credentials_dict(e.get('credentials') or {})
                     mapped[e['_id']] = {
                         'enabled': e.get('enabled', False),
                         'type': e.get('type', e['_id']),
-                        'api_key': (e.get('credentials') or {}).get('api_key', ''),
-                        'api_secret': '***' if (e.get('credentials') or {}).get('api_secret') else '',
+                        'api_key': creds.get('api_key', ''),
+                        'api_secret': '***' if creds.get('api_secret') else '',
                         'base_url': e.get('base_url') or (e.get('connection_info') or {}).get('base_url', ''),
                         'name': e.get('type', e['_id']),
                         'testnet': e.get('testnet', False),
@@ -344,7 +534,11 @@ class Dashboard:
                         'gateway_host': e.get('gateway_host', '127.0.0.1'),
                         'gateway_port': e.get('gateway_port', 7497),
                         'client_id': e.get('client_id', 1),
-                        'paper_trading': e.get('paper_trading', True) if e.get('type') == 'ibkr' else None,
+                        'paper_trading': (
+                            e.get('paper_trading', True) if e.get('type') == 'ibkr'
+                            else e.get('use_paper', True) if e.get('type') == 'alpaca'
+                            else None
+                        ),
                     }
                 return jsonify(mapped)
             except Exception as ex:
@@ -381,7 +575,11 @@ class Dashboard:
                     'gateway_host': doc.get('gateway_host', '127.0.0.1'),
                     'gateway_port': doc.get('gateway_port', 7497),
                     'client_id': doc.get('client_id', 1),
-                    'paper_trading': doc.get('paper_trading', True) if doc.get('type') == 'ibkr' else None,
+                    'paper_trading': (
+                        doc.get('paper_trading', True) if doc.get('type') == 'ibkr'
+                        else doc.get('use_paper', True) if doc.get('type') == 'alpaca'
+                        else None
+                    ),
                 }
                 return jsonify(exchange_config)
             except Exception as ex:
@@ -402,11 +600,24 @@ class Dashboard:
                 if 'enabled' in data:
                     update['enabled'] = bool(data['enabled'])
                 creds = {}
+                try:
+                    from secrets_manager import decrypt_credentials_dict
+                    creds = decrypt_credentials_dict((doc or {}).get('credentials') or {})
+                except Exception:
+                    creds = (doc or {}).get('credentials') or {}
                 if 'api_key' in data:
-                    creds['api_key'] = data['api_key'].strip() if data['api_key'] else ''
-                if 'api_secret' in data and data['api_secret'] != '***':
-                    creds['api_secret'] = data['api_secret'].strip()
-                if creds:
+                    api_key_val = (data.get('api_key') or '').strip()
+                    if api_key_val == '***':
+                        pass
+                    else:
+                        creds['api_key'] = api_key_val
+                if 'api_secret' in data:
+                    api_secret_val = (data.get('api_secret') or '').strip()
+                    if api_secret_val == '***':
+                        pass
+                    else:
+                        creds['api_secret'] = api_secret_val
+                if 'api_key' in data or 'api_secret' in data:
                     try:
                         from secrets_manager import encrypt_credentials_dict
                         creds = encrypt_credentials_dict(creds)
@@ -460,6 +671,7 @@ class Dashboard:
                     update['paper_trading'] = bool(data['paper_trading'])
                 if update:
                     db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': update}, upsert=False)
+                    self._invalidate_executors()
                     return jsonify({'status': 'success', 'message': 'Exchange updated in DB'})
                 return jsonify({'error': 'No valid fields to update'}), 400
             except Exception as ex:
@@ -474,6 +686,7 @@ class Dashboard:
                 res = db.exchange_accounts.delete_one({'_id': exchange_name})
                 if res.deleted_count == 0:
                     return jsonify({'error': 'Exchange account not found'}), 404
+                self._invalidate_executors()
                 return jsonify({'status': 'success', 'message': 'Exchange deleted'}), 200
             except Exception as ex:
                 logger.error(f"Error deleting exchange in MongoDB: {ex}", exc_info=True)
@@ -490,6 +703,7 @@ class Dashboard:
                 res = db.exchange_accounts.update_one({'_id': exchange_name}, {'$set': {'enabled': enabled}})
                 if res.matched_count == 0:
                     return jsonify({'error': 'Exchange account not found'}), 404
+                self._invalidate_executors()
                 return jsonify({'status': 'success', 'message': f"Exchange {'enabled' if enabled else 'disabled'} successfully", 'enabled': enabled})
             except Exception as ex:
                 logger.error(f"Error toggling exchange in MongoDB: {ex}", exc_info=True)
@@ -594,25 +808,12 @@ class Dashboard:
         def update_trading_settings():
             """Update trading settings — writes to MongoDB central_risk_management."""
             data = request.get_json() or {}
-            allowed_keys = {'position_size_percent', 'position_size_fixed', 'use_percentage',
-                            'warn_existing_positions', 'webhook_port', 'webhook_host'}
+            allowed_keys = {'warn_existing_positions', 'webhook_port', 'webhook_host'}
             update = {}
             for key, value in data.items():
                 if key not in allowed_keys:
                     continue
-                if key == 'position_size_percent':
-                    try:
-                        update[key] = max(5.0, min(100.0, float(value) if value else 20.0))
-                    except (ValueError, TypeError):
-                        pass
-                elif key == 'position_size_fixed':
-                    try:
-                        update[key] = float(value) if value else ''
-                    except (ValueError, TypeError):
-                        pass
-                elif key == 'use_percentage':
-                    update[key] = bool(value)
-                elif key == 'warn_existing_positions':
+                if key == 'warn_existing_positions':
                     update[key] = bool(value)
                 else:
                     update[key] = value
@@ -621,7 +822,12 @@ class Dashboard:
             try:
                 from mongo_db import get_db
                 db = get_db()
-                db.central_risk_management.update_one({'_id': 'default'}, {'$set': update}, upsert=True)
+                if 'warn_existing_positions' in update:
+                    db.central_risk_management.update_one(
+                        {'_id': 'default'},
+                        {'$set': {'bybit.warn_existing_positions': update['warn_existing_positions']}},
+                        upsert=True
+                    )
                 self.config['trading_settings'].update(update)
                 return jsonify({'status': 'success', 'message': 'Trading settings updated successfully'})
             except Exception as e:
@@ -643,30 +849,64 @@ class Dashboard:
             """Update risk management settings in MongoDB central_risk_management."""
             data = request.get_json() or {}
             try:
-                from mongo_db import get_db
+                from mongo_db import get_db, get_central_risk
                 db = get_db()
-                update = {}
-                allowed = {
+                if not isinstance(data, dict):
+                    return jsonify({'error': 'Invalid payload'}), 400
+
+                numeric_fields = {
                     'stop_loss_percent', 'take_profit_percent', 'position_size_percent',
-                    'use_percentage', 'warn_existing_positions', 'overrides',
-                    'tp1_target', 'tp2_target', 'tp3_target', 'tp4_target', 'tp5_target'
+                    'tp1_target', 'tp2_target', 'tp3_target', 'tp4_target', 'tp5_target',
                 }
-                for key, value in data.items():
-                    if key not in allowed:
-                        continue
-                    if key in {'stop_loss_percent', 'take_profit_percent', 'position_size_percent',
-                               'tp1_target', 'tp2_target', 'tp3_target', 'tp4_target', 'tp5_target'}:
-                        try:
-                            update[key] = float(value)
-                        except Exception:
-                            continue
-                    elif key in {'use_percentage', 'warn_existing_positions'}:
-                        update[key] = bool(value) if not isinstance(value, str) else str(value).lower() == 'true'
-                    else:
-                        update[key] = value
+                bool_fields = {'use_percentage', 'warn_existing_positions'}
+                mode_fields = {'tp_mode'}
+
+                def _parse_exchange_profile(payload: dict):
+                    parsed = {}
+                    for key, value in payload.items():
+                        if key in numeric_fields:
+                            try:
+                                parsed[key] = float(value)
+                            except Exception:
+                                continue
+                        elif key in bool_fields:
+                            parsed[key] = bool(value) if not isinstance(value, str) else str(value).lower() == 'true'
+                        elif key in mode_fields:
+                            mode = str(value or '').strip().lower()
+                            if mode in {'ladder', 'single', 'none'}:
+                                parsed[key] = mode
+                        elif key == 'position_size_fixed':
+                            try:
+                                parsed[key] = float(value) if value not in (None, '') else None
+                            except Exception:
+                                continue
+                    # Enforce mutual exclusion at API level as well.
+                    # Percentage mode ignores fixed size; fixed mode can keep percentage as fallback.
+                    use_pct = parsed.get('use_percentage')
+                    if use_pct is True:
+                        parsed['position_size_fixed'] = None
+                    return parsed
+
+                update = {}
+                bybit_payload = data.get('bybit')
+                if isinstance(bybit_payload, dict):
+                    parsed_bybit = _parse_exchange_profile(bybit_payload)
+                    for key, value in parsed_bybit.items():
+                        update[f'bybit.{key}'] = value
+
+                alpaca_payload = data.get('alpaca')
+                if isinstance(alpaca_payload, dict):
+                    parsed_alpaca = _parse_exchange_profile(alpaca_payload)
+                    for key, value in parsed_alpaca.items():
+                        update[f'alpaca.{key}'] = value
+
                 if update:
                     db.central_risk_management.update_one({'_id': 'default'}, {'$set': update}, upsert=True)
-                    return jsonify({'status': 'success', 'message': 'Central risk management updated in DB'})
+                    refreshed = get_central_risk()
+                    bybit = refreshed.get('bybit', {})
+                    self.config['trading_settings']['warn_existing_positions'] = bool(bybit.get('warn_existing_positions', True))
+                    self.config['risk_management']['stop_loss_percent'] = float(bybit.get('stop_loss_percent', 5.0))
+                    return jsonify({'status': 'success', 'message': 'Central risk management updated in DB', 'risk': refreshed})
                 return jsonify({'error': 'No valid fields to update'}), 400
             except Exception as e:
                 logger.error(f'Error updating central risk in MongoDB: {e}', exc_info=True)
@@ -674,35 +914,74 @@ class Dashboard:
 
         @self.app.route('/api/portfolio', methods=['GET'])
         def get_portfolio():
-            """Get all tickers with at least one trade (Milestone 3 - Portfolio Page)"""
+            """Get all ticker+account combinations with trades in selected date range."""
             try:
                 from mongo_db import get_db
                 db = get_db()
 
-                # Group trades by symbol, count trades per symbol
-                tickers = list(db.trades.aggregate([
-                    {'$group': {
-                        '_id': '$symbol',
-                        'trade_count': {'$sum': 1},
-                        'last_trade': {'$max': '$timestamp_close'}
-                    }},
-                    {'$sort': {'last_trade': -1}}  # Most recent first
-                ]))
+                start_iso, end_iso = _portfolio_date_range_from_request(request)
+                match_stage = {
+                    'timestamp_open': {
+                        '$gte': start_iso,
+                        '$lte': end_iso,
+                    }
+                }
 
-                return jsonify({'tickers': tickers, 'count': len(tickers)})
+                pipeline = []
+                if match_stage:
+                    pipeline.append({'$match': match_stage})
+                # Group by (symbol, exchange_account_id) so futures and spot show separately
+                pipeline += [
+                    {'$group': {
+                        '_id': {
+                            'symbol': '$symbol',
+                            'exchange_account_id': '$exchange_account_id',
+                        },
+                        'trade_count': {'$sum': 1},
+                        'last_trade': {'$max': '$timestamp_close'},
+                    }},
+                    {'$sort': {'last_trade': -1}},
+                ]
+
+                rows = list(db.trades.aggregate(pipeline))
+
+                # Enrich each row with exchange type/mode label
+                tickers = []
+                for row in rows:
+                    symbol = row['_id']['symbol']
+                    ea_id  = row['_id'].get('exchange_account_id')
+                    label  = _exchange_label(db, ea_id)
+                    tickers.append({
+                        'symbol':              symbol,
+                        'exchange_account_id': ea_id,
+                        'exchange_label':      label,
+                        'trade_count':         row['trade_count'],
+                        'last_trade':          row['last_trade'],
+                    })
+
+                return jsonify({
+                    'tickers': tickers,
+                    'count': len(tickers),
+                    'start_date': start_iso[:10],
+                    'end_date': end_iso[:10],
+                })
             except Exception as e:
                 logger.error(f'Error fetching portfolio: {e}', exc_info=True)
                 return jsonify({'error': 'Failed to fetch portfolio'}), 500
 
-        @self.app.route('/api/portfolio/<symbol>', methods=['GET'])
-        def get_ticker_detail(symbol):
+        @self.app.route('/api/portfolio/<symbol>/<exchange_account_id>', methods=['GET'])
+        def get_ticker_detail(symbol, exchange_account_id):
             """Get ticker detail with trades, ROI, and win rate (Milestone 3 - Ticker Detail Page)"""
             try:
                 from mongo_db import get_db
                 db = get_db()
 
-                # Fetch all trades for this symbol, sorted by open time descending
-                trades = list(db.trades.find({'symbol': symbol}).sort('timestamp_open', -1))
+                query = {'symbol': symbol, 'exchange_account_id': exchange_account_id}
+                start_iso, end_iso = _portfolio_date_range_from_request(request)
+                query['timestamp_open'] = {'$gte': start_iso, '$lte': end_iso}
+
+                # Fetch trades for this symbol+account in selected date range, sorted by open time descending
+                trades = list(db.trades.find(query).sort('timestamp_open', -1))
 
                 # Serialize ObjectId to string
                 for t in trades:
@@ -724,22 +1003,26 @@ class Dashboard:
                         total_invested += entry
 
                 roi = (total_pnl / total_invested * 100) if total_invested > 0 else 0
+                exchange_label = _exchange_label(db, exchange_account_id)
 
                 return jsonify({
                     'symbol': symbol,
+                    'exchange_label': exchange_label,
                     'roi_percent': round(roi, 2),
                     'win_rate_percent': round(win_rate, 2),
                     'total_pnl': round(total_pnl, 2),
                     'total_trades': total_trades,
                     'winning_trades': winning_trades,
-                    'trades': trades
+                    'trades': trades,
+                    'start_date': start_iso[:10],
+                    'end_date': end_iso[:10],
                 })
             except Exception as e:
                 logger.error(f'Error fetching ticker detail for {symbol}: {e}', exc_info=True)
                 return jsonify({'error': 'Failed to fetch ticker detail'}), 500
 
-        @self.app.route('/api/portfolio/<symbol>/trade/<trade_id>', methods=['GET'])
-        def get_trade_detail(symbol, trade_id):
+        @self.app.route('/api/portfolio/<symbol>/<exchange_account_id>/trade/<trade_id>', methods=['GET'])
+        def get_trade_detail(symbol, exchange_account_id, trade_id):
             """Get detailed breakdown of a single trade (Milestone 3 - Trade Detail Page)"""
             try:
                 from mongo_db import get_db
@@ -790,6 +1073,14 @@ class Dashboard:
                 except Exception:
                     duration_str = f"{trade.get('trade_duration_sec', 0)}s"
 
+                # Compute max drawdown and max profit on demand from candle data (REQ-3.5)
+                max_drawdown_pct = None
+                max_profit_pct = None
+                try:
+                    max_drawdown_pct, max_profit_pct = _compute_drawdown_profit(trade, db)
+                except Exception as e:
+                    logger.warning(f"Could not compute drawdown/profit for trade {trade_id}: {e}")
+
                 return jsonify({
                     'symbol': trade.get('symbol'),
                     'direction': trade.get('direction'),
@@ -802,6 +1093,8 @@ class Dashboard:
                     'r_multiple': r_multiple,
                     'trade_duration': duration_str,
                     'trade_duration_sec': trade.get('trade_duration_sec', 0),
+                    'max_drawdown_pct': max_drawdown_pct,
+                    'max_profit_pct': max_profit_pct,
                     'exit_reason': trade.get('exit_reason', 'UNKNOWN'),
                     'timestamp_open': trade.get('timestamp_open'),
                     'timestamp_close': trade.get('timestamp_close'),
@@ -877,7 +1170,13 @@ class Dashboard:
                     exs = get_exchange_accounts_for_account(account_id)
                     for e in exs:
                         if 'credentials' in e and isinstance(e['credentials'], dict):
-                            e['credentials'] = {'api_key': '***'} if e['credentials'].get('api_key') else {}
+                            api_key = (e['credentials'].get('api_key') or '').strip()
+                            api_secret = (e['credentials'].get('api_secret') or '').strip()
+                            e['credentials'] = {}
+                            if api_key:
+                                e['credentials']['api_key'] = api_key
+                            if api_secret:
+                                e['credentials']['api_secret'] = '***'
                     return jsonify({'exchanges': exs})
                 data = request.get_json() or {}
                 from uuid import uuid4
@@ -918,6 +1217,7 @@ class Dashboard:
                 }
                 db = get_db()
                 db.exchange_accounts.update_one({'_id': ex_id}, {'$set': doc}, upsert=True)
+                self._invalidate_executors()
                 resp_doc = dict(doc)
                 resp_doc['credentials'] = {'api_key': '***'} if credentials.get('api_key') else {}
                 return jsonify({'status': 'success', 'exchange': resp_doc}), 201
@@ -935,6 +1235,7 @@ class Dashboard:
                 res = db.accounts.delete_one({'_id': account_id})
                 if res.deleted_count == 0:
                     return jsonify({'error': 'Account not found'}), 404
+                self._invalidate_executors()
                 return jsonify({'status': 'success', 'message': 'Account and its exchange accounts deleted'})
             except Exception as e:
                 logger.error(f"Error deleting account: {e}")
@@ -1154,7 +1455,7 @@ class Dashboard:
                 return jsonify({
                     'exchanges_enabled': ['mexc'],
                     'total_exchanges': 1,
-                    'position_size': self.config['trading_settings'].get('position_size_percent', 0),
+                    'position_size': None,
                     'demo_mode': True,
                     'demo_stats': demo_stats
                 })
@@ -1166,7 +1467,7 @@ class Dashboard:
                 return jsonify({
                     'exchanges_enabled': enabled,
                     'total_exchanges': len(all_accs),
-                    'position_size': self.config['trading_settings'].get('position_size_percent', 0),
+                    'position_size': None,
                     'demo_mode': False,
                 })
             except Exception as e:
@@ -1207,13 +1508,32 @@ class Dashboard:
         
         @self.app.route('/api/signals/status', methods=['GET'])
         def signals_status():
-            """Get signal monitoring status (use signal_monitor directly since webhook is integrated)"""
+            """Get signal monitoring status, augmented with persisted webhook logs."""
             # Use signal_monitor directly since webhook routes are integrated into this Flask app
             if hasattr(self, 'signal_monitor') and self.signal_monitor:
                 status = self.signal_monitor.get_status()
                 # If signals have been received, mark as connected
                 if status.get('total_signals', 0) > 0 or status.get('webhook_status') == 'connected':
                     status['webhook_status'] = 'connected'
+                # Augment in-memory counters with persisted webhook logs so UI survives restarts
+                try:
+                    from mongo_db import get_db
+                    from datetime import datetime, timedelta
+                    db = get_db()
+                    recent_cutoff = datetime.utcnow() - timedelta(hours=24)
+                    recent_logs_count = db.webhook_logs.count_documents({'timestamp': {'$gte': recent_cutoff}})
+                    total_logs_count = db.webhook_logs.count_documents({})
+                    success_logs_count = db.webhook_logs.count_documents({'status': 'success'})
+                    failed_logs_count = max(0, int(total_logs_count) - int(success_logs_count))
+                    latest = db.webhook_logs.find_one({}, sort=[('timestamp', -1)])
+                    status['recent_signals_count'] = max(int(status.get('recent_signals_count', 0)), int(recent_logs_count))
+                    status['total_signals'] = max(int(status.get('total_signals', 0)), int(total_logs_count))
+                    status['successful_trades'] = max(int(status.get('successful_trades', 0)), int(success_logs_count))
+                    status['failed_trades'] = max(int(status.get('failed_trades', 0)), int(failed_logs_count))
+                    if latest and latest.get('timestamp') and not status.get('last_signal_datetime'):
+                        status['last_signal_datetime'] = latest['timestamp'].isoformat()
+                except Exception as e:
+                    logger.debug(f"signals_status webhook_logs augmentation skipped: {e}")
                 return jsonify(status), 200
             
             # Fallback if signal_monitor not available
@@ -1227,16 +1547,71 @@ class Dashboard:
         
         @self.app.route('/api/signals/recent', methods=['GET'])
         def recent_signals():
-            """Get recent signals from the last 24 hours (use signal_monitor directly since webhook is integrated)"""
-            # Use signal_monitor directly since webhook routes are integrated into this Flask app
+            """Get recent signals from persisted webhook logs, with signal_monitor fallback."""
+            limit = request.args.get('limit', 100, type=int)
+            hours = request.args.get('hours', 24.0, type=float)
+            try:
+                from datetime import datetime, timedelta
+                from mongo_db import get_db
+
+                db = get_db()
+                cutoff = datetime.utcnow() - timedelta(hours=hours)
+                logs = list(
+                    db.webhook_logs.find({'timestamp': {'$gte': cutoff}})
+                    .sort('timestamp', -1)
+                    .limit(limit)
+                )
+
+                signals = []
+                for log in logs:
+                    raw = log.get('raw_payload') or {}
+                    raw_price = raw.get('price')
+                    executions = log.get('executions') if isinstance(log.get('executions'), list) else []
+                    price = None
+                    if isinstance(raw_price, dict):
+                        try:
+                            price = float(raw_price.get('close')) if raw_price.get('close') is not None else None
+                        except Exception:
+                            price = None
+                    elif raw_price is not None:
+                        try:
+                            price = float(raw_price)
+                        except Exception:
+                            price = None
+
+                    ts = log.get('timestamp')
+                    dt_iso = ts.isoformat() if hasattr(ts, 'isoformat') else str(ts) if ts else None
+                    status = (log.get('status') or '').lower()
+                    error_msg = log.get('error') or log.get('failure_reason')
+                    if status not in {'success', 'failed', 'error', 'skipped'}:
+                        if any(bool(e.get('success')) for e in executions):
+                            status = 'success'
+                        else:
+                            status = 'failed'
+                            if not error_msg:
+                                error_msg = 'Execution status unavailable (treated as failed)'
+                    signals.append({
+                        'id': str(log.get('_id')) if log.get('_id') is not None else None,
+                        'timestamp': dt_iso,
+                        'datetime': dt_iso,
+                        'symbol': log.get('symbol') or raw.get('symbol') or '',
+                        'signal': log.get('signal') or raw.get('signal') or '',
+                        'price': price,
+                        'executed': status == 'success',
+                        'status': status,
+                        'error': error_msg if status in ['failed', 'error'] else None,
+                        'matched_exchanges': log.get('matched_exchanges') or [],
+                        'executions': executions,
+                    })
+
+                return jsonify({'signals': signals}), 200
+            except Exception as e:
+                logger.warning(f"recent_signals webhook_logs query failed, falling back to signal_monitor: {e}")
+
+            # Fallback to in-memory signal monitor
             if hasattr(self, 'signal_monitor') and self.signal_monitor:
-                limit = request.args.get('limit', 100, type=int)  # Increased default limit to show more signals
-                hours = request.args.get('hours', 24.0, type=float)  # Default: last 24 hours
-                # Get signals from last 24 hours (or specified hours)
                 signals = self.signal_monitor.get_recent_signals(limit=limit, hours=hours)
                 return jsonify({'signals': signals}), 200
-            
-            # Fallback if signal_monitor not available
             return jsonify({'signals': []}), 200
 
         @self.app.route('/api/webhook-logs', methods=['GET'])

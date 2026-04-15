@@ -6,6 +6,7 @@ Receives and processes TradingView webhook alerts
 import json
 import logging
 import threading
+import time
 from typing import Dict, Optional
 from flask import Flask, request, jsonify
 import jsonschema
@@ -29,8 +30,20 @@ class WebhookHandler:
         self.app = Flask(__name__)
         self._executors_cache = None  # Cache executors to maintain position state across webhooks
         self._executor_meta = {}
+        self._executor_lock = threading.Lock()
+        self._executor_cache_time = 0.0   # monotonic timestamp of last build
+        _EXECUTOR_CACHE_TTL = 30          # seconds — config changes propagate within this window
+        self._EXECUTOR_CACHE_TTL = _EXECUTOR_CACHE_TTL
         self._setup_routes()
     
+    def invalidate_executor_cache(self):
+        """Discard cached executors so they are rebuilt from DB on the next webhook."""
+        with self._executor_lock:
+            self._executors_cache = None
+            self._executor_meta = {}
+            self._executor_cache_time = 0.0
+        logger.info("🔄 Executor cache invalidated — will rebuild on next webhook")
+
     def _get_or_create_executors(self):
         """Create executors for all enabled exchange accounts from MongoDB.
         Executors are cached to maintain position state across webhooks.
@@ -38,69 +51,90 @@ class WebhookHandler:
         Returns:
             Dict of exchange_account_id -> TradingExecutor
         """
-        # Return cached executors if available
-        if self._executors_cache is not None:
+        now = time.monotonic()
+        # Fast path — cache is warm and not expired
+        if self._executors_cache is not None and (now - self._executor_cache_time) < self._EXECUTOR_CACHE_TTL:
             return self._executors_cache
 
-        executor_config = {}
-        self._executor_meta = {}
-        try:
-            from mongo_db import get_enabled_exchange_accounts, get_central_risk
-            risk_mgmt = get_central_risk()
-            executor_config['STOP_LOSS_PERCENT'] = float(risk_mgmt.get('stop_loss_percent', 5.0))
-            executor_config['POSITION_SIZE_PERCENT'] = float(risk_mgmt.get('position_size_percent', 20.0))
-            executor_config['POSITION_SIZE_FIXED'] = risk_mgmt.get('position_size_fixed') or None
-            use_pct = risk_mgmt.get('use_percentage', True)
-            executor_config['USE_PERCENTAGE'] = bool(use_pct) if not isinstance(use_pct, str) else str(use_pct).lower() == 'true'
-            executor_config['warn_existing_positions'] = bool(risk_mgmt.get('warn_existing_positions', True))
+        with self._executor_lock:
+            # Re-check inside the lock: another thread may have built it while we waited
+            now = time.monotonic()
+            if self._executors_cache is not None and (now - self._executor_cache_time) < self._EXECUTOR_CACHE_TTL:
+                return self._executors_cache
 
-            accounts = get_enabled_exchange_accounts()
-            executors = {}
-            for ex_acc in accounts:
-                ex_type = ex_acc.get('type')
-                ex_id = ex_acc.get('_id')
-                creds = ex_acc.get('credentials', {}) or {}
-                api_key = creds.get('api_key') or ex_acc.get('api_key', '')
-                api_secret = creds.get('api_secret') or ex_acc.get('api_secret', '')
-                base_url = ex_acc.get('base_url', '') or ex_acc.get('connection_info', {}).get('base_url', '')
-                try:
-                    if ex_type == 'mexc':
-                        from mexc_client import MEXCClient
-                        client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
-                                            sub_account_id=ex_acc.get('sub_account_id', ''),
-                                            use_sub_account=ex_acc.get('use_sub_account', False))
-                    elif ex_type == 'alpaca':
-                        from alpaca_client import AlpacaClient
-                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://paper-api.alpaca.markets')
-                    elif ex_type == 'ibkr':
-                        from ibkr_client import IBKRClient
-                        gateway_host = ex_acc.get('gateway_host', '127.0.0.1')
-                        gateway_port = int(ex_acc.get('gateway_port', 7497))
-                        client_id = int(ex_acc.get('client_id', 1))
-                        client = IBKRClient(host=gateway_host, port=gateway_port, client_id=client_id)
-                    elif ex_type == 'bybit':
-                        from bybit_client import BybitClient
-                        proxy = (ex_acc.get('proxy') or '').strip() or None
-                        client = BybitClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
-                                             testnet=ex_acc.get('testnet', False),
-                                             trading_mode=ex_acc.get('trading_mode', 'spot'),
-                                             leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
-                    else:
-                        logger.warning(f"Unknown exchange type: {ex_type} ({ex_id}) — skipping")
-                        continue
+            self._executor_meta = {}
+            try:
+                from mongo_db import get_enabled_exchange_accounts, get_central_risk, get_exchange_risk
+                risk_mgmt = get_central_risk()
 
-                    executors[ex_id] = TradingExecutor(client, executor_config, ex_type, exchange_account_id=ex_id, account_id=ex_acc.get('account_id'))
-                    self._executor_meta[ex_id] = ex_acc
-                except Exception as e:
-                    logger.error(f"Failed to create client for exchange account {ex_id}: {e}", exc_info=True)
+                accounts = get_enabled_exchange_accounts()
+                executors = {}
+                for ex_acc in accounts:
+                    ex_type = ex_acc.get('type')
+                    ex_id = ex_acc.get('_id')
+                    creds = ex_acc.get('credentials', {}) or {}
+                    api_key = creds.get('api_key') or ex_acc.get('api_key', '')
+                    api_secret = creds.get('api_secret') or ex_acc.get('api_secret', '')
+                    base_url = ex_acc.get('base_url', '') or ex_acc.get('connection_info', {}).get('base_url', '')
+                    try:
+                        if ex_type == 'mexc':
+                            from mexc_client import MEXCClient
+                            client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
+                                                sub_account_id=ex_acc.get('sub_account_id', ''),
+                                                use_sub_account=ex_acc.get('use_sub_account', False))
+                        elif ex_type == 'alpaca':
+                            from alpaca_client import AlpacaClient
+                            use_paper = bool(ex_acc.get('use_paper', True))
+                            default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
+                            client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or default_base)
+                        elif ex_type == 'ibkr':
+                            from ibkr_client import IBKRClient
+                            gateway_host = ex_acc.get('gateway_host', '127.0.0.1')
+                            gateway_port = int(ex_acc.get('gateway_port', 7497))
+                            client_id = int(ex_acc.get('client_id', 1))
+                            client = IBKRClient(host=gateway_host, port=gateway_port, client_id=client_id)
+                        elif ex_type == 'bybit':
+                            from bybit_client import BybitClient
+                            proxy = (ex_acc.get('proxy') or '').strip() or None
+                            client = BybitClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
+                                                 testnet=ex_acc.get('testnet', False),
+                                                 trading_mode=ex_acc.get('trading_mode', 'spot'),
+                                                 leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
+                        else:
+                            logger.warning(f"Unknown exchange type: {ex_type} ({ex_id}) — skipping")
+                            continue
 
-            logger.info(f"✅ Created {len(executors)} executor(s) from MongoDB")
-            # Cache executors to maintain position state across webhooks
-            self._executors_cache = executors
-            return executors
-        except Exception as e:
-            logger.error(f"Failed to create executors from MongoDB: {e}", exc_info=True)
-            return {}
+                        ex_risk = get_exchange_risk(ex_type, risk_mgmt)
+                        executor_config = {
+                            'STOP_LOSS_PERCENT': float(ex_risk.get('stop_loss_percent', 5.0)),
+                            'TAKE_PROFIT_PERCENT': float(ex_risk.get('take_profit_percent', 5.0)),
+                            'POSITION_SIZE_PERCENT': float(ex_risk.get('position_size_percent', 20.0)),
+                            'POSITION_SIZE_FIXED': ex_risk.get('position_size_fixed') or None,
+                            'USE_PERCENTAGE': (
+                                bool(ex_risk.get('use_percentage', True))
+                                if not isinstance(ex_risk.get('use_percentage', True), str)
+                                else str(ex_risk.get('use_percentage', True)).lower() == 'true'
+                            ),
+                            'warn_existing_positions': bool(ex_risk.get('warn_existing_positions', True)),
+                            'TP_MODE': str(ex_risk.get('tp_mode') or '').lower() or None,
+                            'TP1_TARGET': ex_risk.get('tp1_target'),
+                            'TP2_TARGET': ex_risk.get('tp2_target'),
+                            'TP3_TARGET': ex_risk.get('tp3_target'),
+                            'TP4_TARGET': ex_risk.get('tp4_target'),
+                            'TP5_TARGET': ex_risk.get('tp5_target'),
+                        }
+                        executors[ex_id] = TradingExecutor(client, executor_config, ex_type, exchange_account_id=ex_id, account_id=ex_acc.get('account_id'))
+                        self._executor_meta[ex_id] = ex_acc
+                    except Exception as e:
+                        logger.error(f"Failed to create client for exchange account {ex_id}: {e}", exc_info=True)
+
+                logger.info(f"✅ Created {len(executors)} executor(s) from MongoDB")
+                self._executors_cache = executors
+                self._executor_cache_time = time.monotonic()
+                return executors
+            except Exception as e:
+                logger.error(f"Failed to create executors from MongoDB: {e}", exc_info=True)
+                return {}
     
     def _register_routes_to_app(self, target_app):
         """Register webhook routes to an existing Flask app (for integration)"""
@@ -128,25 +162,81 @@ class WebhookHandler:
             # Log failures should never break webhook processing
             logger.warning(f"Failed to log webhook to MongoDB: {e}")
 
-    def _execute_signal_async(self, signal_data: dict, data: dict, executors: dict):
+    @staticmethod
+    def _canonical(sym: str) -> str:
+        """Canonical form for symbol comparison: uppercase, no spaces, no slashes.
+
+        This lets TradingView-format symbols (DOGEUSDT) match exchange-stored
+        symbols that include a slash (DOGE/USDT), since both canonicalize to
+        DOGEUSDT.  Quote-currency differences (DOGEUSDT vs DOGEUSD) are still
+        distinguished because we only remove the slash, nothing else.
+        """
+        return str(sym).strip().upper().replace(' ', '').replace('/', '')
+
+    @staticmethod
+    def _alpaca_quote_equivalent(sym: str) -> str:
+        """Normalize quote variants for Alpaca symbol matching (USDT/USDC -> USD)."""
+        s = str(sym).strip().upper()
+        if s.endswith('USDT'):
+            return f"{s[:-4]}USD"
+        if s.endswith('USDC'):
+            return f"{s[:-4]}USD"
+        return s
+
+    def _select_executors_for_symbol(self, signal_data: dict, executors: dict):
+        """Return list[(exchange_account_id, executor)] matching the incoming symbol.
+
+        TradingView uses the .P suffix to indicate a perpetual/futures symbol
+        (e.g. BTCUSDT.P = futures, BTCUSDT = spot).  We use this to route the
+        signal only to accounts whose trading_mode matches:
+          - incoming .P  → futures accounts only
+          - incoming bare → non-futures (spot) accounts only
+        This prevents a futures signal from firing on a spot account and vice-versa
+        when both accounts share the same base symbol (e.g. BTCUSDT).
+
+        Symbol comparison is done in canonical form (slashes stripped) so that
+        TradingView's DOGEUSDT matches an Alpaca account configured as DOGE/USDT.
+        """
+        symbol = signal_data.get('symbol', '')
+        symbol_norm = self._canonical(symbol)
+        is_futures_signal = symbol_norm.endswith('.P')
+        symbol_base = symbol_norm[:-2] if is_futures_signal else symbol_norm
+        if not symbol_base:
+            return []
+
+        executors_to_use = []
+        for ex_acc_id, executor in executors.items():
+            meta = self._executor_meta.get(ex_acc_id, {})
+            symbol_config = meta.get('symbol')
+            if not symbol_config:
+                continue
+
+            # Match trading_mode to signal type
+            account_mode = (meta.get('trading_mode') or 'spot').lower()
+            account_is_futures = (account_mode == 'futures')
+            if is_futures_signal != account_is_futures:
+                continue  # futures signal → skip spot accounts, and vice-versa
+
+            configured = self._canonical(symbol_config)
+            allowed_base = configured[:-2] if configured.endswith('.P') else configured
+            # Alpaca only trades USD-quoted crypto pairs. Treat TradingView
+            # USDT/USDC symbols as equivalent to USD for account routing.
+            ex_type = (meta.get('type') or '').lower()
+            compare_signal = symbol_base
+            compare_allowed = allowed_base
+            if ex_type == 'alpaca':
+                compare_signal = self._alpaca_quote_equivalent(compare_signal)
+                compare_allowed = self._alpaca_quote_equivalent(compare_allowed)
+
+            if compare_signal == compare_allowed:
+                executors_to_use.append((ex_acc_id, executor))
+        return executors_to_use
+
+    def _execute_signal_async(self, signal_data: dict, data: dict, executors_to_use: list):
         """Execute signal in background thread"""
         try:
             symbol = signal_data.get('symbol', '')
             symbol_norm = str(symbol).strip().upper().replace(' ', '') if symbol else ''
-            # Base form for matching: BTCUSDT.P and BTCUSDT both map to BTCUSDT
-            symbol_base = symbol_norm[:-2] if symbol_norm.endswith('.P') else symbol_norm
-
-            # Find executors that should receive this symbol
-            executors_to_use = []
-            for ex_acc_id, executor in executors.items():
-                meta = self._executor_meta.get(ex_acc_id, {})
-                symbol_config = meta.get('symbol')
-                if not symbol_config:
-                    continue
-                normalized = str(symbol_config).strip().upper().replace(' ', '')
-                allowed_base = normalized[:-2] if normalized.endswith('.P') else normalized
-                if symbol_base and symbol_base == allowed_base:
-                    executors_to_use.append((ex_acc_id, executor))
 
             if not executors_to_use:
                 msg = f"Symbol {symbol} not configured for any enabled exchange. Add it in Exchanges → Manage Symbols."
@@ -265,10 +355,12 @@ class WebhookHandler:
             executors = self._get_or_create_executors()
 
             if executors:
+                executors_to_use = self._select_executors_for_symbol(signal_data, executors)
+                matched_exchange_ids = [ex for ex, _ in executors_to_use]
                 # Return immediately and process in background
                 thread = threading.Thread(
                     target=self._execute_signal_async,
-                    args=(signal_data, data, executors),
+                    args=(signal_data, data, executors_to_use),
                     daemon=True
                 )
                 thread.start()
@@ -276,7 +368,9 @@ class WebhookHandler:
                 return jsonify({
                     'status': 'success',
                     'message': 'Signal accepted and queued for processing',
-                    'results': []
+                    'results': [],
+                    'matched_exchanges': matched_exchange_ids,
+                    'matched_count': len(matched_exchange_ids)
                 }), 200
             else:
                 # Demo mode: simulate trade execution
@@ -484,4 +578,3 @@ class WebhookHandler:
         """
         logger.info(f"Starting webhook server on {host}:{port}")
         self.app.run(host=host, port=port, debug=debug)
-

@@ -557,6 +557,49 @@ class BybitClient:
         
         raise ValueError(f"Could not get price for {symbol}")
     
+    def get_klines(self, symbol: str, start_ms: int, end_ms: int, interval: str = None) -> List[List]:
+        """
+        Fetch historical OHLCV candles for a symbol between two timestamps.
+
+        Args:
+            symbol:   Trading pair (e.g. 'BTCUSDT')
+            start_ms: Start timestamp in milliseconds (UTC)
+            end_ms:   End timestamp in milliseconds (UTC)
+            interval: Bybit interval string ('1','5','15','60','240','D').
+                      Auto-selected from duration when omitted.
+
+        Returns:
+            List of candles [startTime_ms, open, high, low, close, volume, turnover]
+            Ordered oldest → newest.
+        """
+        if interval is None:
+            duration_s = max(0, (end_ms - start_ms) // 1000)
+            if duration_s <= 3600:
+                interval = '1'
+            elif duration_s <= 86400:
+                interval = '5'
+            elif duration_s <= 604800:
+                interval = '60'
+            else:
+                interval = '240'
+
+        params = {
+            'category': self._category(),
+            'symbol': symbol,
+            'interval': interval,
+            'start': start_ms,
+            'end': end_ms,
+            'limit': 1000,
+        }
+        try:
+            resp = self._make_request('GET', '/v5/market/kline', params=params)
+            candles = resp.get('result', {}).get('list', [])
+            # Bybit returns newest-first; reverse to oldest-first
+            return list(reversed(candles))
+        except Exception as e:
+            logger.error(f"Failed to fetch klines for {symbol}: {e}")
+            return []
+
     def get_order_book(self, symbol: str, limit: int = 5) -> Dict:
         """
         Get order book

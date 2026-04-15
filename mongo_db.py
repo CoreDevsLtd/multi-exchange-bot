@@ -57,22 +57,59 @@ def get_db():
     return get_client()[MONGO_DB]
 
 
+def _risk_profile_defaults(exchange_type: str) -> Dict:
+    ex = str(exchange_type or '').strip().lower()
+    base = {
+        'stop_loss_percent': 5.0,
+        'take_profit_percent': 5.0,
+        'position_size_percent': 20.0,
+        'position_size_fixed': None,
+        'use_percentage': True,
+        'warn_existing_positions': True,
+        'tp_mode': 'ladder',
+    }
+    if ex == 'alpaca':
+        base['tp_mode'] = 'single'
+    if ex == 'bybit':
+        base.update({
+            'tp1_target': 1.0,
+            'tp2_target': 2.0,
+            'tp3_target': 5.0,
+            'tp4_target': 6.5,
+            'tp5_target': 8.0,
+        })
+    return base
+
+
+def get_exchange_risk(exchange_type: str, risk_doc: Optional[Dict] = None) -> Dict:
+    """Return normalized risk profile for one exchange from central risk schema."""
+    doc = risk_doc or get_central_risk()
+    ex = str(exchange_type or '').strip().lower()
+    defaults = _risk_profile_defaults(ex)
+    profile = doc.get(ex, {})
+    if not isinstance(profile, dict):
+        profile = {}
+    merged = defaults.copy()
+    merged.update(profile)
+    return merged
+
+
 def get_central_risk() -> Dict:
-    """Return central risk management doc (defaults to _id 'default')"""
+    """Return central risk management document with exchange-separated schema."""
     db = get_db()
     doc = db.central_risk_management.find_one({})
+    defaults = {
+        '_id': 'default',
+        'bybit': _risk_profile_defaults('bybit'),
+        'alpaca': _risk_profile_defaults('alpaca'),
+    }
     if not doc:
-        # return reasonable defaults
-        return {
-            '_id': 'default',
-            'stop_loss_percent': 5.0,
-            'take_profit_percent': 5.0,
-            'position_size_percent': 10.0,
-            'use_percentage': True,
-            'warn_existing_positions': True,
-            'overrides': {}
-        }
-    return doc
+        return defaults
+    out = defaults.copy()
+    out.update(doc)
+    out['bybit'] = get_exchange_risk('bybit', out)
+    out['alpaca'] = get_exchange_risk('alpaca', out)
+    return out
 
 
 def _maybe_decrypt_doc(doc: Dict) -> Dict:
@@ -171,3 +208,61 @@ def ensure_indexes():
     db.exchange_accounts.create_index('account_id')
     # TTL index: auto-delete webhook logs after 30 days (2592000 seconds)
     db.webhook_logs.create_index('timestamp', expireAfterSeconds=2592000)
+    # Active positions: unique per account + symbol, fast lookup
+    db.active_positions.create_index(
+        [('exchange_account_id', 1), ('symbol', 1)],
+        unique=True
+    )
+
+
+# ---------------------------------------------------------------------------
+# Active positions — persisted so all gunicorn workers share state and
+# positions survive container restarts.
+# ---------------------------------------------------------------------------
+
+def upsert_active_position(position: Dict) -> None:
+    """Insert or replace an active position document."""
+    db = get_db()
+    db.active_positions.replace_one(
+        {
+            'exchange_account_id': position['exchange_account_id'],
+            'symbol': position['symbol'],
+        },
+        position,
+        upsert=True,
+    )
+
+
+def get_active_position(exchange_account_id: str, symbol: str) -> Optional[Dict]:
+    """Fetch a single active position from DB. Returns None if not found."""
+    db = get_db()
+    return db.active_positions.find_one(
+        {'exchange_account_id': exchange_account_id, 'symbol': symbol},
+        {'_id': 0},
+    )
+
+
+def get_all_active_positions(exchange_account_id: str) -> List[Dict]:
+    """Fetch all active positions for one exchange account."""
+    db = get_db()
+    return list(db.active_positions.find(
+        {'exchange_account_id': exchange_account_id},
+        {'_id': 0},
+    ))
+
+
+def update_active_position_fields(exchange_account_id: str, symbol: str, fields: Dict) -> None:
+    """Partial update — only the supplied fields are written."""
+    db = get_db()
+    db.active_positions.update_one(
+        {'exchange_account_id': exchange_account_id, 'symbol': symbol},
+        {'$set': fields},
+    )
+
+
+def delete_active_position(exchange_account_id: str, symbol: str) -> None:
+    """Remove an active position (called when a trade closes)."""
+    db = get_db()
+    db.active_positions.delete_one(
+        {'exchange_account_id': exchange_account_id, 'symbol': symbol}
+    )

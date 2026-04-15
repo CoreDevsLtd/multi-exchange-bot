@@ -45,14 +45,33 @@
     }
   },
   "trading_settings": {
-    "position_size_percent": 20.0,
-    "position_size_fixed": "",
-    "use_percentage": true,
     "webhook_port": 5000,
     "webhook_host": "0.0.0.0",
     "warn_existing_positions": true
   },
   "risk_management": {
-    "stop_loss_percent": 5.0
+    "bybit": {
+      "stop_loss_percent": 5.0,
+      "take_profit_percent": 5.0,
+      "position_size_percent": 20.0,
+      "position_size_fixed": null,
+      "use_percentage": true,
+      "warn_existing_positions": true,
+      "tp_mode": "ladder",
+      "tp1_target": 1.0,
+      "tp2_target": 2.0,
+      "tp3_target": 5.0,
+      "tp4_target": 6.5,
+      "tp5_target": 8.0
+    },
+    "alpaca": {
+      "stop_loss_percent": 5.0,
+      "take_profit_percent": 5.0,
+      "position_size_percent": 20.0,
+      "position_size_fixed": null,
+      "use_percentage": true,
+      "warn_existing_positions": true,
+      "tp_mode": "single"
+    }
   }
 }

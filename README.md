@@ -105,12 +105,27 @@ ExchangeAccounts (1:M under an account)
 CentralRiskManagement
 {
   "_id": "default",
-  "stop_loss_percent": 3,
-  "take_profit_percent": 5,
-  "position_size_percent": 10,
-  "use_percentage": true,
-  "warn_existing_positions": true,
-  "overrides": {}
+  "bybit": {
+    "stop_loss_percent": 3,
+    "take_profit_percent": 5,
+    "position_size_percent": 10,
+    "use_percentage": true,
+    "warn_existing_positions": true,
+    "tp_mode": "ladder",
+    "tp1_target": 1.0,
+    "tp2_target": 2.0,
+    "tp3_target": 5.0,
+    "tp4_target": 6.5,
+    "tp5_target": 8.0
+  },
+  "alpaca": {
+    "stop_loss_percent": 3,
+    "take_profit_percent": 5,
+    "position_size_percent": 10,
+    "use_percentage": true,
+    "warn_existing_positions": true,
+    "tp_mode": "single"
+  }
 }
 
 Trades (append-only ledger example)
@@ -261,4 +276,3 @@ Included deployment files (added):
 Next steps:
 - Implement secrets-store integration (Vault) and credential encryption helpers, or
 - Finish Exchange create/edit UI and secrets UX work (reveal/replace pattern, validation).
-

@@ -64,7 +64,7 @@ class TPSLManager:
     """Manages Take Profit and Stop Loss orders"""
     
     # TP Configuration (from requirements)
-    TP_CONFIG = {
+    DEFAULT_TP_CONFIG = {
         'tp1': {'percent': 1.0, 'close_percent': 10.0},   # 1% from entry, close 10% (90% remaining)
         'tp2': {'percent': 2.0, 'close_percent': 15.0},   # 2% from entry, close 15% (75% remaining)
         'tp3': {'percent': 5.0, 'close_percent': 35.0},   # 5% from entry, close 35% (40% remaining)
@@ -73,7 +73,9 @@ class TPSLManager:
     }
     
     def __init__(self, exchange_client: Union[object], position_manager: PositionManager, 
-                 stop_loss_percent: float = 5.0, exchange_name: str = 'mexc'):
+                 stop_loss_percent: float = 5.0, exchange_name: str = 'mexc',
+                 tp_mode: Optional[str] = None, take_profit_percent: float = 5.0,
+                 tp_targets: Optional[Dict[str, float]] = None):
         """
         Initialize TP/SL Manager
         
@@ -88,6 +90,19 @@ class TPSLManager:
         self.stop_loss_percent = stop_loss_percent
         self.exchange_name = exchange_name.lower()
         self.stop_loss_monitor = None  # Will be set by TradingExecutor
+        mode = str(tp_mode or '').strip().lower()
+        if mode not in {'ladder', 'single', 'none'}:
+            mode = 'single' if self.exchange_name == 'alpaca' else 'ladder'
+        self.tp_mode = mode
+        self.take_profit_percent = float(take_profit_percent)
+        self.tp_config = {k: dict(v) for k, v in self.DEFAULT_TP_CONFIG.items()}
+        for tp_key, tp_value in (tp_targets or {}).items():
+            if tp_key not in self.tp_config:
+                continue
+            try:
+                self.tp_config[tp_key]['percent'] = float(tp_value)
+            except (TypeError, ValueError):
+                continue
     
     def calculate_tp_price(self, entry_price: float, tp_level: str, side: str) -> float:
         """
@@ -101,7 +116,7 @@ class TPSLManager:
         Returns:
             Take-profit price
         """
-        tp_config = self.TP_CONFIG.get(tp_level, {})
+        tp_config = self.tp_config.get(tp_level, {})
         tp_percent = tp_config.get('percent', 0)
         
         if side.upper() == 'BUY':
@@ -138,7 +153,9 @@ class TPSLManager:
         Returns:
             Quantity to close
         """
-        tp_config = self.TP_CONFIG.get(tp_level, {})
+        tp_config = self.tp_config.get(tp_level, {})
+        if self.tp_mode == 'single' and tp_level == 'tp1':
+            return remaining_quantity
         
         if tp_level == 'tp5':
             # TP5: Close 50% of remaining
@@ -188,6 +205,7 @@ class TPSLManager:
                         if position:
                             position['stop_loss_order_id'] = 'BYBIT_TPSL'
                             position['exchange_sl_active'] = True
+                        self.position_manager.save_position(symbol)
                         logger.info(f"✅ Bybit trading-stop SL set @ {sl_price} (Full, MarkPrice)")
                         return 'BYBIT_TPSL'
                     except Exception as e:
@@ -195,6 +213,7 @@ class TPSLManager:
                 if position:
                     position['stop_loss_order_id'] = 'MONITORED'
                     position['exchange_sl_active'] = False
+                self.position_manager.save_position(symbol)
                 logger.warning("⚠️  Bybit SL not on exchange; using price monitor fallback.")
                 return 'MONITORED'
 
@@ -202,6 +221,7 @@ class TPSLManager:
             if position:
                 position['stop_loss_order_id'] = 'MONITORED'
                 position['exchange_sl_active'] = False
+            self.position_manager.save_position(symbol)
             return 'MONITORED'
                 
         except Exception as e:
@@ -258,6 +278,8 @@ class TPSLManager:
                 position['stop_loss_order_id'] = 'MONITORED'
                 position['exchange_sl_active'] = False
 
+            self.position_manager.save_position(symbol)
+
             if self.stop_loss_monitor:
                 self.stop_loss_monitor.update_stop_loss_price(symbol, entry_price)
 
@@ -289,6 +311,10 @@ class TPSLManager:
             logger.error(f"No position found for {symbol}")
             return tp_orders
         
+        if self.tp_mode == 'none':
+            logger.info(f"TP mode is 'none' for {self.exchange_name}; skipping TP orders for {symbol}")
+            return tp_orders
+
         bybit_futures = (
             self.exchange_name == 'bybit'
             and getattr(self.client, 'trading_mode', '') == 'futures'
@@ -302,15 +328,24 @@ class TPSLManager:
                     + ", ".join(f"{k}={v:.8f}" for k, v in bybit_tp_qtys.items())
                 )
 
-        for tp_level in ['tp1', 'tp2', 'tp3', 'tp4', 'tp5']:
+        tp_levels = ['tp1'] if self.tp_mode == 'single' else ['tp1', 'tp2', 'tp3', 'tp4', 'tp5']
+        for tp_level in tp_levels:
             try:
-                tp_price = self.calculate_tp_price(entry_price, tp_level, side)
+                if self.tp_mode == 'single':
+                    if side.upper() == 'BUY':
+                        tp_price = entry_price * (1 + self.take_profit_percent / 100.0)
+                    else:
+                        tp_price = entry_price * (1 - self.take_profit_percent / 100.0)
+                else:
+                    tp_price = self.calculate_tp_price(entry_price, tp_level, side)
 
                 if bybit_futures and bybit_tp_qtys:
                     close_qty = bybit_tp_qtys.get(tp_level, 0.0)
                     if close_qty <= 0:
                         logger.warning(f"Skip {tp_level}: qty below min step / not enough position")
                         continue
+                elif self.tp_mode == 'single':
+                    close_qty = initial_quantity
                 elif tp_level == 'tp5':
                     remaining_after_tp4 = max(0.0, initial_quantity * (1.0 - 0.10 - 0.15 - 0.35 - 0.35))
                     close_qty = remaining_after_tp4 * 0.5
@@ -322,7 +357,7 @@ class TPSLManager:
 
                 logger.info(
                     f"Placing {tp_level}: {symbol} @ {tp_price}, Qty: {close_qty} "
-                    f"({self.TP_CONFIG.get(tp_level, {}).get('close_percent', 0)}% tier vs initial, where applicable)"
+                    f"({self.tp_config.get(tp_level, {}).get('close_percent', 0)}% tier vs initial, where applicable)"
                 )
                 reduce_only = getattr(self.client, 'trading_mode', '') == 'futures'
                 order_params = dict(symbol=symbol, side=tp_side, order_type='LIMIT', quantity=close_qty, price=tp_price)
@@ -346,10 +381,12 @@ class TPSLManager:
                     logger.info(f"{tp_level} order placed: {order_id}")
                 else:
                     logger.warning(f"Failed to place {tp_level}: {response}")
-                    
+
             except Exception as e:
                 logger.error(f"Error placing {tp_level}: {e}")
-        
+
+        # Persist tp_orders mutations to DB in one shot after the loop
+        self.position_manager.save_position(symbol)
         return tp_orders
     
     def check_and_handle_tp1(self, symbol: str) -> bool:
@@ -415,6 +452,13 @@ class TPSLManager:
                     return False
             
             if status == 'FILLED':
+                if self.tp_mode == 'single':
+                    logger.info(f"✅ TP1 FILLED for {symbol} - closing position in single-TP mode")
+                    self.position_manager.mark_tp_hit(symbol, 'tp1')
+                    self.position_manager.update_position_quantity(symbol, position['remaining_quantity'])
+                    self.position_manager.close_position(symbol, exit_reason='TP')
+                    return True
+
                 logger.info(
                     f"✅ TP1 FILLED for {symbol} - Moving stop-loss to entry @ {position['entry_price']} "
                     f"(breakeven; exits on pullback below entry are expected)"
@@ -456,4 +500,3 @@ class TPSLManager:
             raise
         
         return False
-

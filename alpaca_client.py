@@ -5,9 +5,12 @@ Handles authentication, order placement, and account management for Alpaca
 
 import requests
 import json
+import re
+import time
 from typing import Dict, Optional, List
 import logging
 from datetime import datetime
+from urllib.parse import quote
 
 logger = logging.getLogger(__name__)
 
@@ -90,15 +93,37 @@ class AlpacaClient:
         Returns:
             Formatted crypto symbol (e.g., BTC/USD)
         """
-        # If already in correct format, return as-is
+        # Alpaca crypto trading uses USD-quoted pairs. Normalize any slash form
+        # (e.g. DOGE/USDT, DOGE/USDC) to DOGE/USD for consistent behavior.
         if '/' in symbol:
-            return symbol.upper()
+            base = symbol.split('/')[0].strip().upper()
+            return f"{base}/USD"
         
         # Remove common suffixes
         clean = symbol.replace('USDT', '').replace('USD', '').replace('USDC', '')
         
         # Add /USD suffix for crypto
         return f"{clean.upper()}/USD"
+
+    def _format_crypto_position_symbol(self, symbol: str) -> str:
+        """
+        Format crypto symbol for Alpaca positions endpoints (legacy no-slash form).
+
+        Alpaca trading/data endpoints commonly use pair format (e.g., BTC/USD),
+        while positions endpoints are most reliable with legacy symbology
+        (e.g., BTCUSD).
+        """
+        return self._format_crypto_symbol(symbol).replace('/', '')
+
+    @staticmethod
+    def _canonical_alpaca_symbol(symbol: str) -> str:
+        """Canonical symbol for Alpaca matching: uppercase, no slash, USDT/USDC mapped to USD."""
+        s = str(symbol or '').strip().upper().replace(' ', '').replace('/', '')
+        if s.endswith('USDT'):
+            return f"{s[:-4]}USD"
+        if s.endswith('USDC'):
+            return f"{s[:-4]}USD"
+        return s
     
     def _format_stock_symbol(self, symbol: str) -> str:
         """
@@ -341,14 +366,15 @@ class AlpacaClient:
             Position dictionary or None
         """
         try:
-            # Format symbol based on asset type
+            # Positions endpoint is more reliable with legacy no-slash crypto symbol.
             is_crypto = self._is_crypto_symbol(symbol)
             if is_crypto:
-                clean_symbol = self._format_crypto_symbol(symbol)
+                clean_symbol = self._format_crypto_position_symbol(symbol)
             else:
                 clean_symbol = self._format_stock_symbol(symbol)
-            
-            return self._make_request('GET', f'/v2/positions/{clean_symbol}')
+
+            encoded_symbol = quote(clean_symbol, safe='')
+            return self._make_request('GET', f'/v2/positions/{encoded_symbol}')
         except Exception as e:
             # Position doesn't exist
             return None
@@ -485,6 +511,56 @@ class AlpacaClient:
                     raise ValueError(f"Symbol '{symbol}' not found on Alpaca or market is closed. Alpaca only supports US stocks during market hours (9:30 AM - 4:00 PM ET).")
             raise
     
+    def get_bars(self, symbol: str, start_iso: str, end_iso: str, timeframe: str = None) -> List[Dict]:
+        """
+        Fetch historical OHLCV bars for a symbol between two ISO-8601 timestamps.
+
+        Args:
+            symbol:    Ticker (e.g. 'AAPL' or 'BTC/USD')
+            start_iso: Start time as ISO-8601 string (e.g. '2026-04-10T14:00:00Z')
+            end_iso:   End time as ISO-8601 string
+            timeframe: Alpaca timeframe string ('1Min','5Min','15Min','1Hour','1Day').
+                       Auto-selected from duration when omitted.
+
+        Returns:
+            List of bar dicts with keys: t, o, h, l, c, v  (oldest → newest)
+        """
+        try:
+            from datetime import datetime as _dt
+            t_start = _dt.fromisoformat(start_iso.replace('Z', '+00:00'))
+            t_end   = _dt.fromisoformat(end_iso.replace('Z', '+00:00'))
+            duration_s = max(0, (t_end - t_start).total_seconds())
+        except Exception:
+            duration_s = 3600
+
+        if timeframe is None:
+            if duration_s <= 3600:
+                timeframe = '1Min'
+            elif duration_s <= 86400:
+                timeframe = '5Min'
+            elif duration_s <= 604800:
+                timeframe = '1Hour'
+            else:
+                timeframe = '1Day'
+
+        is_crypto = self._is_crypto_symbol(symbol)
+        params = {'timeframe': timeframe, 'start': start_iso, 'end': end_iso, 'limit': 10000}
+
+        try:
+            if is_crypto:
+                crypto_sym = self._format_crypto_symbol(symbol)
+                params['symbols'] = crypto_sym
+                resp = self._make_request('GET', '/v1beta3/crypto/us/bars', params=params, use_data_api=True)
+                raw = resp.get('bars', {}).get(crypto_sym, []) if resp else []
+            else:
+                stock_sym = symbol.strip().upper()
+                resp = self._make_request('GET', f'/v2/stocks/{stock_sym}/bars', params=params, use_data_api=True)
+                raw = resp.get('bars', []) if resp else []
+            return raw
+        except Exception as e:
+            logger.error(f"Failed to fetch bars for {symbol}: {e}")
+            return []
+
     def place_order(self, symbol: str, side: str, order_type: str,
                    quantity: Optional[float] = None,
                    notional: Optional[float] = None,
@@ -675,7 +751,10 @@ class AlpacaClient:
         """
         params = {}
         if symbol:
-            clean_symbol = symbol.replace('USDT', '').replace('USD', '')
+            if self._is_crypto_symbol(symbol):
+                clean_symbol = self._format_crypto_position_symbol(symbol)
+            else:
+                clean_symbol = self._format_stock_symbol(symbol)
             params['symbols'] = clean_symbol
         
         return self._make_request('GET', '/v2/orders', params=params)
@@ -733,7 +812,7 @@ class AlpacaClient:
         fractional shares, rounding, and lot sizes automatically.
 
         Args:
-            symbol: Trading symbol (e.g., 'AAPL', 'BTC/USD')
+            symbol: Trading symbol (e.g., 'AAPL', 'BTC/USD', 'BTCUSD')
             qty: Exact quantity to close (optional, defaults to full position)
             percentage: Percentage of position to close 0-100 (optional)
 
@@ -741,7 +820,7 @@ class AlpacaClient:
             Order response dict
         """
         is_crypto = self._is_crypto_symbol(symbol)
-        clean_symbol = self._format_crypto_symbol(symbol) if is_crypto else self._format_stock_symbol(symbol)
+        clean_symbol = self._format_crypto_position_symbol(symbol) if is_crypto else self._format_stock_symbol(symbol)
 
         params: Dict = {}
         if qty is not None:
@@ -749,8 +828,56 @@ class AlpacaClient:
         elif percentage is not None:
             params['percentage'] = str(min(100.0, max(0.0, float(percentage))))
 
+        # Full close only: cancel any open orders for this symbol first so quantity
+        # is not reserved (common with staged TP limits).
+        if not params:
+            try:
+                open_orders = self.get_open_orders() or []
+                target = self._canonical_alpaca_symbol(clean_symbol)
+                terminal = {'filled', 'canceled', 'cancelled', 'expired', 'rejected'}
+                matched = []
+                for order in open_orders:
+                    if str(order.get('status', '')).lower() in terminal:
+                        continue
+                    if self._canonical_alpaca_symbol(order.get('symbol')) == target:
+                        matched.append(order)
+                logger.info(
+                    f"Alpaca close preflight for {clean_symbol}: "
+                    f"open_orders={len(open_orders)}, matched={len(matched)}"
+                )
+                cancelled = 0
+                for order in matched:
+                    order_id = order.get('id') or order.get('order_id') or order.get('orderId')
+                    if not order_id:
+                        continue
+                    self.cancel_order(str(order_id))
+                    cancelled += 1
+                if cancelled > 0:
+                    logger.info(f"Cancelled {cancelled} open Alpaca order(s) for {clean_symbol} before close")
+                    time.sleep(1.0)
+            except Exception as e:
+                logger.warning(f"Alpaca close preflight cancel failed for {clean_symbol}: {e}")
+
+        encoded_symbol = quote(clean_symbol, safe='')
         logger.info(f"Closing position via DELETE /v2/positions/{clean_symbol} params={params or 'full'}")
-        return self._make_request('DELETE', f'/v2/positions/{clean_symbol}', params=params or None)
+        try:
+            return self._make_request('DELETE', f'/v2/positions/{encoded_symbol}', params=params or None)
+        except Exception as e:
+            # If Alpaca reports only part of the asset is currently available,
+            # retry a partial close with the available amount.
+            msg = str(e)
+            if not params and 'insufficient balance for' in msg.lower():
+                m = re.search(r'available:\s*([0-9]*\.?[0-9]+)', msg)
+                if m:
+                    available_qty = float(m.group(1))
+                    if available_qty > 0:
+                        retry_params = {'qty': str(available_qty)}
+                        logger.warning(
+                            f"Retrying close for {clean_symbol} with available qty={available_qty} "
+                            f"after insufficient-balance full-close error"
+                        )
+                        return self._make_request('DELETE', f'/v2/positions/{encoded_symbol}', params=retry_params)
+            raise
 
     def cancel_all_orders(self) -> List[Dict]:
         """
@@ -760,4 +887,3 @@ class AlpacaClient:
             List of cancellation responses
         """
         return self._make_request('DELETE', '/v2/orders')
-

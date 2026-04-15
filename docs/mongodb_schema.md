@@ -32,18 +32,31 @@ Example document (Bybit):
 
 Notes: store secrets encrypted or store a credential reference to a secrets manager (recommended).
 
-3) CentralRiskManagement collection (single doc defaults + optional overrides)
+3) CentralRiskManagement collection (single doc with per-exchange risk profiles)
 
 Example document:
 {
   "_id": "default",
-  "stop_loss_percent": 3,
-  "take_profit_percent": 5,
-  "position_size_percent": 10,
-  "use_percentage": true,
-  "warn_existing_positions": true,
-  "overrides": {
-     "bybit": { "max_leverage": 10, "stop_loss_percent": 2.5 }
+  "bybit": {
+    "stop_loss_percent": 3,
+    "take_profit_percent": 5,
+    "position_size_percent": 10,
+    "use_percentage": true,
+    "warn_existing_positions": true,
+    "tp_mode": "ladder",
+    "tp1_target": 1.0,
+    "tp2_target": 2.0,
+    "tp3_target": 5.0,
+    "tp4_target": 6.5,
+    "tp5_target": 8.0
+  },
+  "alpaca": {
+    "stop_loss_percent": 3,
+    "take_profit_percent": 5,
+    "position_size_percent": 10,
+    "use_percentage": true,
+    "warn_existing_positions": true,
+    "tp_mode": "single"
   }
 }
 
@@ -91,4 +104,3 @@ Code integration notes
 
 Security
 - Do not store API secrets in plaintext; use KMS/Vault and store references in exchange_accounts instead
-

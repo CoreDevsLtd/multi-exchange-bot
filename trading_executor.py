@@ -45,7 +45,22 @@ class TradingExecutor:
         # Pass exchange account identifiers (if provided) to the position manager for persistence
         self.position_manager = PositionManager(exchange_client, exchange_name, exchange_account_id=exchange_account_id, account_id=account_id)
         stop_loss_percent = float(config.get('STOP_LOSS_PERCENT', 5.0))
-        self.tp_sl_manager = TPSLManager(exchange_client, self.position_manager, stop_loss_percent, exchange_name)
+        take_profit_percent = float(config.get('TAKE_PROFIT_PERCENT', 5.0))
+        self.tp_sl_manager = TPSLManager(
+            exchange_client,
+            self.position_manager,
+            stop_loss_percent,
+            exchange_name,
+            tp_mode=config.get('TP_MODE'),
+            take_profit_percent=take_profit_percent,
+            tp_targets={
+                'tp1': config.get('TP1_TARGET'),
+                'tp2': config.get('TP2_TARGET'),
+                'tp3': config.get('TP3_TARGET'),
+                'tp4': config.get('TP4_TARGET'),
+                'tp5': config.get('TP5_TARGET'),
+            },
+        )
         
         # Initialize stop-loss monitor (exchange-specific)
         self.stop_loss_monitor = StopLossMonitor(exchange_client, self.position_manager, exchange_name)
@@ -367,6 +382,7 @@ class TradingExecutor:
             
             if sl_order_id:
                 position['stop_loss_order_id'] = sl_order_id
+                self.position_manager.save_position(symbol)
                 logger.info(f"Initial stop-loss placed: {sl_order_id}")
             else:
                 logger.error("⚠️  WARNING: Failed to place initial stop-loss")
@@ -419,6 +435,46 @@ class TradingExecutor:
             reduce_only = False
             
             if self.exchange_name == 'alpaca':
+                # Alpaca reserves position quantity for existing sell limit orders.
+                # Cancel open orders for this symbol first so close/sell can use full qty.
+                if hasattr(self.client, 'get_open_orders') and hasattr(self.client, 'cancel_order'):
+                    try:
+                        def _canon_alpaca(sym: str) -> str:
+                            s = str(sym or '').strip().upper().replace(' ', '').replace('/', '')
+                            if s.endswith('USDT'):
+                                return f"{s[:-4]}USD"
+                            if s.endswith('USDC'):
+                                return f"{s[:-4]}USD"
+                            return s
+
+                        target_symbol = _canon_alpaca(symbol)
+                        open_orders = self.client.get_open_orders() or []
+                        matched_orders = []
+                        for order in open_orders:
+                            status = str(order.get('status', '')).lower()
+                            if status in {'filled', 'canceled', 'cancelled', 'expired', 'rejected'}:
+                                continue
+                            if _canon_alpaca(order.get('symbol')) == target_symbol:
+                                matched_orders.append(order)
+
+                        logger.info(
+                            f"Alpaca open orders before close for {symbol}: "
+                            f"total_open={len(open_orders)}, matched_symbol={len(matched_orders)}"
+                        )
+
+                        cancelled = 0
+                        for order in matched_orders:
+                            order_id = order.get('id') or order.get('order_id') or order.get('orderId')
+                            if not order_id:
+                                continue
+                            self.client.cancel_order(str(order_id))
+                            cancelled += 1
+                        if cancelled > 0:
+                            logger.info(f"Cancelled {cancelled} open Alpaca order(s) for {symbol} before close")
+                            time.sleep(1.0)
+                    except Exception as e:
+                        logger.warning(f"Could not cancel open Alpaca orders for {symbol}: {e}")
+
                 # Use close_position_by_symbol when available — Alpaca handles qty/rounding natively
                 if hasattr(self.client, 'close_position_by_symbol'):
                     try:
@@ -451,7 +507,10 @@ class TradingExecutor:
                 logger.warning(f"No position/balance available to sell for {symbol}")
                 return {'error': f'No position or balance to sell for {symbol}'}
             
-            if self.use_percentage and not reduce_only:
+            if self.exchange_name == 'alpaca':
+                # SELL signal for Alpaca should close the remaining position, not percentage-trim it.
+                sell_quantity = available_quantity
+            elif self.use_percentage and not reduce_only:
                 sell_quantity = available_quantity * (self.position_size_percent / 100.0)
             else:
                 sell_quantity = available_quantity
@@ -602,4 +661,3 @@ class TradingExecutor:
         else:
             logger.error(f"Unknown signal type: {signal}")
             return {'error': f'Unknown signal type: {signal}'}
-

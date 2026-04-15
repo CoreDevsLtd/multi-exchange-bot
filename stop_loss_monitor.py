@@ -188,6 +188,7 @@ class StopLossMonitor:
         position = self.position_manager.get_position(symbol)
         if position:
             position['stop_loss_price'] = new_sl_price
+            self.position_manager.save_position(symbol)
             logger.info(f"Stop-loss price updated for {symbol}: {new_sl_price}")
 
 
