@@ -130,13 +130,15 @@ class TradingExecutor:
                     return position_size
                     
                 elif self.exchange_name == 'alpaca':
-                    # Alpaca uses USD as quote currency
+                    # Alpaca uses USD as quote currency.
+                    # buying_power already reflects margin (2x overnight, 4x intraday for PDT accounts).
+                    # For cash accounts or crypto, buying_power == cash, so this is safe universally.
                     account = self.client.get_account_info()
-                    cash = float(account.get('cash', 0))
-                    
+                    buying_power = float(account.get('buying_power', 0))
+
                     # Calculate position size as percentage
-                    position_size = cash * (self.position_size_percent / 100.0)
-                    logger.info(f"Position size: {position_size} USD ({self.position_size_percent}% of {cash})")
+                    position_size = buying_power * (self.position_size_percent / 100.0)
+                    logger.info(f"Position size: {position_size} USD ({self.position_size_percent}% of {buying_power} buying_power)")
                     return position_size
                 elif self.exchange_name == 'ibkr':
                     # IBKR uses USD as quote currency
