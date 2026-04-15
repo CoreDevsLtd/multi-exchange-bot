@@ -84,7 +84,7 @@ class WebhookHandler:
                                                 use_sub_account=ex_acc.get('use_sub_account', False))
                         elif ex_type == 'alpaca':
                             from alpaca_client import AlpacaClient
-                            use_paper = bool(ex_acc.get('use_paper', True))
+                            use_paper = bool(ex_acc.get('paper_trading', ex_acc.get('use_paper', True)))
                             default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
                             client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or default_base)
                         elif ex_type == 'ibkr':
@@ -96,8 +96,9 @@ class WebhookHandler:
                         elif ex_type == 'bybit':
                             from bybit_client import BybitClient
                             proxy = (ex_acc.get('proxy') or '').strip() or None
+                            bybit_paper = bool(ex_acc.get('paper_trading', ex_acc.get('testnet', False)))
                             client = BybitClient(api_key=api_key, api_secret=api_secret, base_url=base_url,
-                                                 testnet=ex_acc.get('testnet', False),
+                                                 testnet=bybit_paper,
                                                  trading_mode=ex_acc.get('trading_mode', 'spot'),
                                                  leverage=int(ex_acc.get('leverage', 1)), proxy=proxy)
                         else:

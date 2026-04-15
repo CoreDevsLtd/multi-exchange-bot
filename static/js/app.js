@@ -76,8 +76,23 @@ const api = {
       opts.body = JSON.stringify(body);
     }
     const r = await fetch(url, opts);
-    if (!r.ok) throw new Error(`${method} ${url} → HTTP ${r.status}`);
-    return r.json();
+    const raw = await r.text();
+    let payload = null;
+    if (raw) {
+      try { payload = JSON.parse(raw); } catch { payload = { message: raw }; }
+    }
+    if (!r.ok) {
+      const backendError = payload?.error;
+      const backendMessage = payload?.message;
+      const msg = (backendError && backendError.toLowerCase() !== 'connection failed')
+        ? backendError
+        : (backendMessage || backendError || `${method} ${url} → HTTP ${r.status}`);
+      const err = new Error(msg);
+      err.status = r.status;
+      err.payload = payload;
+      throw err;
+    }
+    return payload ?? {};
   },
   get:    (url)       => api._req('GET',    url),
   post:   (url, body) => api._req('POST',   url, body),
@@ -162,10 +177,16 @@ const api = {
   },
 
   async testConnection(id, body) {
-    const r = await api.post(`/api/test-connection/${id}`, body).catch(() => null);
-    if (r?.status === 'success') toast('Connection successful!', 'success');
-    else toast(r?.error ?? r?.message ?? 'Connection failed', 'error');
-    return r;
+    try {
+      const r = await api.post(`/api/test-connection/${id}`, body);
+      if (r?.status === 'success') toast('Connection successful!', 'success');
+      else toast(r?.error ?? r?.message ?? 'Connection failed', 'error');
+      return r;
+    } catch (err) {
+      const msg = err?.payload?.message || err?.payload?.error || err?.message || 'Connection failed';
+      toast(msg, 'error');
+      return { status: 'error', error: msg };
+    }
   },
 
   /* --- IBKR ibeam Container Management --- */
@@ -584,14 +605,16 @@ const ExchangeModal = {
                          :placeholder="secretHasValue ? '(unchanged — type to replace)' : 'API Secret'"
                          autocomplete="new-password">
                 </div>
-
-                <div class="field-group">
-                  <label>Base URL <span class="field-hint">(leave blank for default)</span></label>
-                  <input v-model.trim="form.base_url" type="text" :placeholder="baseUrlPlaceholder">
-                </div>
               </template>
 
               <template v-if="isBybit">
+                <div class="field-group">
+                  <label>Trading Environment</label>
+                  <select v-model="form.paper_trading">
+                    <option :value="false">Live</option>
+                    <option :value="true">Paper</option>
+                  </select>
+                </div>
                 <div class="field-row">
                   <div class="field-group">
                     <label>Trading Mode</label>
@@ -645,6 +668,10 @@ const ExchangeModal = {
               </template>
 
               <template v-if="isMexc">
+                <div class="field-group">
+                  <label>Base URL <span class="field-hint">(leave blank for default)</span></label>
+                  <input v-model.trim="form.base_url" type="text" :placeholder="baseUrlPlaceholder">
+                </div>
                 <label class="check-row">
                   <input v-model="form.use_sub_account" type="checkbox"> Use Sub-Account
                 </label>
@@ -683,9 +710,13 @@ const ExchangeModal = {
               </template>
 
               <template v-if="isAlpaca">
-                <label class="check-row">
-                  <input v-model="form.paper_trading" type="checkbox"> Paper Trading (demo)
-                </label>
+                <div class="field-group">
+                  <label>Trading Environment</label>
+                  <select v-model="form.paper_trading">
+                    <option :value="true">Paper</option>
+                    <option :value="false">Live</option>
+                  </select>
+                </div>
 
                 <div class="field-group">
                   <label>Symbol</label>
@@ -778,7 +809,7 @@ const ExchangeModal = {
         type: 'bybit', secretHasValue: false, saving: false, testing: false,
         symbolQuery: '', symbolResults: [],
         form: { enabled: true, api_key: '', api_secret: '', base_url: '',
-                trading_mode: 'spot', leverage: 1, paper_trading: true,
+                trading_mode: 'spot', leverage: 1, paper_trading: false,
                 use_sub_account: false, sub_account_id: '', proxy: '', symbol: null,
                 gateway_host: '127.0.0.1', gateway_port: 7497, client_id: 1 },
       });
@@ -787,10 +818,11 @@ const ExchangeModal = {
     showEdit(exchange) {
       const creds = exchange.credentials ?? {};
       const origLeverage = exchange.leverage ?? 1;
+      const editType = (exchange.type ?? exchange._id).toLowerCase();
       Object.assign(this, {
         isCreate: false, exchangeId: exchange._id,
         accountId: exchange.account_id,
-        type: (exchange.type ?? exchange._id).toLowerCase(),
+        type: editType,
         secretHasValue: !!(creds.api_secret ?? exchange.api_secret),
         saving: false, testing: false,
         symbolQuery: '', symbolResults: [],
@@ -810,7 +842,11 @@ const ExchangeModal = {
           gateway_host:    exchange.gateway_host ?? '127.0.0.1',
           gateway_port:    exchange.gateway_port ?? 7497,
           client_id:       exchange.client_id ?? 1,
-          paper_trading:   exchange.paper_trading !== false,
+          paper_trading:   (editType === 'bybit')
+                            ? !!exchange.testnet
+                            : (editType === 'alpaca')
+                              ? (exchange.paper_trading ?? exchange.use_paper ?? true)
+                              : (exchange.paper_trading !== false),
         },
       });
       // Check if IBKR container is running
@@ -832,11 +868,11 @@ const ExchangeModal = {
         type:     this.type,
         enabled:  this.form.enabled,
         api_key:  this.form.api_key,
-        base_url: baseUrl,
         symbol:   this.form.symbol,
       };
+      if (this.isMexc) p.base_url = baseUrl;
       if (this.form.api_secret) p.api_secret = this.form.api_secret;
-      if (this.isBybit)  { p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
+      if (this.isBybit)  { p.paper_trading = this.form.paper_trading; p.trading_mode = this.form.trading_mode; p.leverage = this.form.leverage; if (this.form.proxy) p.proxy = this.form.proxy; }
       if (this.isMexc)   { p.use_sub_account = this.form.use_sub_account; p.sub_account_id = this.form.sub_account_id; }
       if (this.isAlpaca) { p.paper_trading = this.form.paper_trading; }
       if (this.isIbkr)   { p.gateway_host = this.form.gateway_host; p.gateway_port = parseInt(this.form.gateway_port); p.client_id = parseInt(this.form.client_id); p.paper_trading = this.form.paper_trading; }
@@ -936,6 +972,17 @@ const ExchangeModal = {
       this.save();
     },
   },
+  watch: {
+    type(nextType) {
+      if (!this.isCreate) return;
+      if (nextType === 'bybit') this.form.paper_trading = false;
+      if (nextType === 'alpaca' || nextType === 'ibkr') this.form.paper_trading = true;
+      if (nextType === 'ibkr') this.form.gateway_port = this.form.paper_trading ? 7497 : 7496;
+    },
+    'form.paper_trading'(paper) {
+      if (this.type === 'ibkr') this.form.gateway_port = paper ? 7497 : 7496;
+    },
+  },
 };
 
 /* ============================================================
@@ -1019,8 +1066,15 @@ const ExchangeCard = {
     symbol()    { return this.ex.symbol ?? null; },
     modeLabel() {
       const m = this.ex.trading_mode;
+      const env = (this.type === 'alpaca')
+        ? ((this.ex.paper_trading ?? this.ex.use_paper) ? 'Paper' : 'Live')
+        : (this.ex.paper_trading ? 'Paper' : this.ex.testnet ? 'Paper' : 'Live');
+      if (this.type === 'bybit') {
+        const tradingMode = m ? m.charAt(0).toUpperCase() + m.slice(1) : 'Spot';
+        return `${tradingMode} · ${env}`;
+      }
       if (m) return m.charAt(0).toUpperCase() + m.slice(1);
-      return this.ex.paper_trading ? 'Paper' : this.ex.testnet ? 'Testnet' : 'Live';
+      return env;
     },
   },
   template: `
@@ -1332,8 +1386,10 @@ const SymbolsRoutingPage = {
     rows() {
       return Object.entries(store.exchanges).map(([id, ex]) => {
         const sym = ex.symbol ?? null;
-        const env  = ex.paper_trading ? 'Paper' : ex.testnet ? 'Testnet' : 'Live';
         const type = (ex.type ?? id).toLowerCase();
+        const env = (type === 'alpaca')
+          ? ((ex.paper_trading ?? ex.use_paper) ? 'Paper' : 'Live')
+          : (ex.paper_trading ? 'Paper' : ex.testnet ? 'Paper' : 'Live');
         return { id, type, env, sym };
       });
     },

@@ -78,6 +78,14 @@ def _exchange_label(db, exchange_account_id: str) -> str:
         return exchange_account_id
 
 
+def _is_bybit_paper(exchange: dict) -> bool:
+    return bool(exchange.get('paper_trading', exchange.get('testnet', False)))
+
+
+def _alpaca_use_paper(exchange: dict) -> bool:
+    return bool(exchange.get('paper_trading', exchange.get('use_paper', True)))
+
+
 def _compute_drawdown_profit(trade: dict, db) -> tuple:
     """
     Compute max drawdown % and max profit % for a closed trade on demand (REQ-3.5).
@@ -142,10 +150,11 @@ def _compute_drawdown_profit(trade: dict, db) -> tuple:
     if ex_type == 'bybit':
         try:
             from bybit_client import BybitClient
+            bybit_paper = _is_bybit_paper(ex_acc)
             client = BybitClient(
                 api_key=api_key, api_secret=api_secret,
                 base_url=(ex_acc.get('base_url') or 'https://api.bybit.com').rstrip('/'),
-                testnet=ex_acc.get('testnet', False),
+                testnet=bybit_paper,
                 trading_mode=ex_acc.get('trading_mode', 'spot'),
             )
             candles = client.get_klines(symbol, start_ms, end_ms)
@@ -159,9 +168,11 @@ def _compute_drawdown_profit(trade: dict, db) -> tuple:
     elif ex_type == 'alpaca':
         try:
             from alpaca_client import AlpacaClient
+            use_paper = _alpaca_use_paper(ex_acc)
+            default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
             client = AlpacaClient(
                 api_key=api_key, api_secret=api_secret,
-                base_url=ex_acc.get('base_url') or 'https://paper-api.alpaca.markets',
+                base_url=ex_acc.get('base_url') or default_base,
             )
             bars = client.get_bars(symbol, start_iso, end_iso)
             highs = [float(b['h']) for b in bars if 'h' in b]
@@ -269,7 +280,7 @@ class Dashboard:
     def _fetch_bybit_symbols(self, exchange: dict, query: str, limit: int) -> list:
         base_url = exchange.get('base_url') or 'https://api.bybit.com'
         base_url = base_url.rstrip('/')
-        if exchange.get('testnet'):
+        if _is_bybit_paper(exchange):
             base_url = 'https://api-testnet.bybit.com'
         mode = (exchange.get('trading_mode') or 'spot').lower()
         category = 'linear' if mode == 'futures' else 'spot'
@@ -354,7 +365,7 @@ class Dashboard:
         return self._filter_symbols([s for s in symbols if s], query, limit)
 
     def _fetch_alpaca_symbols(self, exchange: dict, query: str, limit: int) -> list:
-        use_paper = bool(exchange.get('use_paper', True))
+        use_paper = _alpaca_use_paper(exchange)
         default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
         base_url = (exchange.get('base_url') or default_base).rstrip('/')
         api_key = (exchange.get('api_key') or '').strip()
@@ -454,13 +465,16 @@ class Dashboard:
                         client = MEXCClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://api.mexc.com')
                     elif ex_type == 'alpaca':
                         from alpaca_client import AlpacaClient
-                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or 'https://paper-api.alpaca.markets')
+                        use_paper = _alpaca_use_paper(ex_acc)
+                        default_base = 'https://paper-api.alpaca.markets' if use_paper else 'https://api.alpaca.markets'
+                        client = AlpacaClient(api_key=api_key, api_secret=api_secret, base_url=base_url or default_base)
                     elif ex_type == 'bybit':
                         from bybit_client import BybitClient
                         proxy = (ex_acc.get('proxy') or '').strip() or None
+                        bybit_paper = _is_bybit_paper(ex_acc)
                         client = BybitClient(api_key=api_key, api_secret=api_secret,
                                              base_url=(base_url or 'https://api.bybit.com').rstrip('/'),
-                                             testnet=ex_acc.get('testnet', False),
+                                             testnet=bybit_paper,
                                              trading_mode=ex_acc.get('trading_mode', 'spot'),
                                              leverage=int(ex_acc.get('leverage') or 1), proxy=proxy)
                     elif ex_type == 'ibkr':
@@ -536,7 +550,8 @@ class Dashboard:
                         'client_id': e.get('client_id', 1),
                         'paper_trading': (
                             e.get('paper_trading', True) if e.get('type') == 'ibkr'
-                            else e.get('use_paper', True) if e.get('type') == 'alpaca'
+                            else _alpaca_use_paper(e) if e.get('type') == 'alpaca'
+                            else _is_bybit_paper(e) if e.get('type') == 'bybit'
                             else None
                         ),
                     }
@@ -577,7 +592,8 @@ class Dashboard:
                     'client_id': doc.get('client_id', 1),
                     'paper_trading': (
                         doc.get('paper_trading', True) if doc.get('type') == 'ibkr'
-                        else doc.get('use_paper', True) if doc.get('type') == 'alpaca'
+                        else _alpaca_use_paper(doc) if doc.get('type') == 'alpaca'
+                        else _is_bybit_paper(doc) if doc.get('type') == 'bybit'
                         else None
                     ),
                 }
@@ -627,7 +643,15 @@ class Dashboard:
                 if 'base_url' in data:
                     update['base_url'] = data['base_url']
                 if 'paper_trading' in data:
-                    update['use_paper'] = bool(data['paper_trading'])
+                    paper_value = bool(data['paper_trading'])
+                    if exchange_type == 'alpaca':
+                        update['use_paper'] = paper_value
+                        if 'base_url' not in data:
+                            update['base_url'] = ''
+                    elif exchange_type == 'bybit':
+                        update['testnet'] = paper_value
+                        if 'base_url' not in data:
+                            update['base_url'] = ''
                 if 'sub_account_id' in data:
                     update['sub_account_id'] = data['sub_account_id']
                 if 'use_sub_account' in data:
@@ -743,10 +767,19 @@ class Dashboard:
                 exchange = {
                     'base_url': req_data.get('base_url') or doc.get('base_url') or (doc.get('connection_info') or {}).get('base_url') or '',
                     'testnet': req_data.get('testnet') if 'testnet' in req_data else doc.get('testnet', False),
+                    'use_paper': req_data.get('use_paper') if 'use_paper' in req_data else doc.get('use_paper', True),
+                    'paper_trading': req_data.get('paper_trading') if 'paper_trading' in req_data else (
+                        _alpaca_use_paper(doc) if ex_type == 'alpaca'
+                        else _is_bybit_paper(doc) if ex_type == 'bybit'
+                        else doc.get('paper_trading', True) if ex_type == 'ibkr'
+                        else None
+                    ),
                     'trading_mode': req_data.get('trading_mode') or doc.get('trading_mode', 'spot'),
                     'api_key': req_api_key or (creds.get('api_key') or '').strip(),
                     'api_secret': '',
                 }
+                if 'paper_trading' in req_data and 'base_url' not in req_data and ex_type in ('bybit', 'alpaca'):
+                    exchange['base_url'] = ''
                 if req_api_secret:
                     exchange['api_secret'] = req_api_secret
                 else:
@@ -1151,7 +1184,8 @@ class Dashboard:
                             'testnet': False,
                             'base_url': '',
                             'proxy': '',
-                            'use_paper': False,
+                            'use_paper': True if ex_type == 'alpaca' else False,
+                            'paper_trading': True if ex_type == 'ibkr' else None,
                         }},
                         upsert=True
                     )
@@ -1169,6 +1203,13 @@ class Dashboard:
                 if request.method == 'GET':
                     exs = get_exchange_accounts_for_account(account_id)
                     for e in exs:
+                        ex_type = (e.get('type') or '').lower()
+                        if ex_type == 'bybit':
+                            e['paper_trading'] = _is_bybit_paper(e)
+                        elif ex_type == 'alpaca':
+                            e['paper_trading'] = _alpaca_use_paper(e)
+                        elif ex_type == 'ibkr':
+                            e['paper_trading'] = e.get('paper_trading', True)
                         if 'credentials' in e and isinstance(e['credentials'], dict):
                             api_key = (e['credentials'].get('api_key') or '').strip()
                             api_secret = (e['credentials'].get('api_secret') or '').strip()
@@ -1206,10 +1247,10 @@ class Dashboard:
                     'symbol': data.get('symbol'),
                     'leverage': data.get('leverage'),
                     'trading_mode': data.get('trading_mode'),
-                    'testnet': bool(data.get('testnet', False)),
+                    'testnet': bool(data.get('paper_trading', data.get('testnet', False))) if ex_type == 'bybit' else bool(data.get('testnet', False)),
                     'base_url': data.get('base_url') or '',
                     'proxy': data.get('proxy', ''),
-                    'use_paper': bool(data.get('use_paper', False)),
+                    'use_paper': bool(data.get('paper_trading', data.get('use_paper', True))) if ex_type == 'alpaca' else bool(data.get('use_paper', False)),
                     'gateway_host': (data.get('gateway_host') or '127.0.0.1').strip(),
                     'gateway_port': int(data.get('gateway_port') or 7497),
                     'client_id': int(data.get('client_id') or 1),
@@ -1320,6 +1361,12 @@ class Dashboard:
                         'leverage': doc.get('leverage', 1),
                         'account_id': doc.get('account_id', ''),
                         'use_paper': doc.get('use_paper', False),
+                        'paper_trading': (
+                            doc.get('paper_trading', True) if (doc.get('type') or '').lower() == 'ibkr'
+                            else _alpaca_use_paper(doc) if (doc.get('type') or '').lower() == 'alpaca'
+                            else _is_bybit_paper(doc) if (doc.get('type') or '').lower() == 'bybit'
+                            else None
+                        ),
                         'proxy': doc.get('proxy', ''),
                     }
             except Exception as e:
@@ -1334,6 +1381,9 @@ class Dashboard:
             if data.get('api_secret') == '***':
                 api_secret = (exchange.get('api_secret') or '').strip()
             base_url = data.get('base_url') or exchange.get('base_url', '')
+            paper_trading = bool(data.get('paper_trading', exchange.get('paper_trading', False)))
+            if 'paper_trading' in data and 'base_url' not in data and exchange_type in ('bybit', 'alpaca'):
+                base_url = ''
 
             if exchange_type != 'ibkr':
                 if not api_key or not api_secret or api_secret == '***':
@@ -1347,12 +1397,15 @@ class Dashboard:
                     validation = client.validate_connection()
                 elif exchange_type == 'alpaca':
                     from alpaca_client import AlpacaClient
+                    default_base = 'https://paper-api.alpaca.markets' if paper_trading else 'https://api.alpaca.markets'
                     client = AlpacaClient(api_key=api_key, api_secret=api_secret,
-                                          base_url=base_url or 'https://paper-api.alpaca.markets')
+                                          base_url=base_url or default_base)
                     validation = client.validate_connection()
                 elif exchange_type == 'bybit':
                     from bybit_client import BybitClient
-                    testnet = data.get('testnet') if 'testnet' in data else exchange.get('testnet', False)
+                    testnet = bool(data.get('paper_trading')) if 'paper_trading' in data else (
+                        data.get('testnet') if 'testnet' in data else exchange.get('testnet', False)
+                    )
                     trading_mode = data.get('trading_mode') or exchange.get('trading_mode', 'spot')
                     leverage = int(data.get('leverage') or exchange.get('leverage', 1))
                     proxy = (data.get('proxy') or exchange.get('proxy') or '').strip() or None
@@ -1427,7 +1480,7 @@ class Dashboard:
                 from bybit_client import BybitClient
                 client = BybitClient(api_key=api_key, api_secret=api_secret,
                                     base_url=(doc.get('base_url') or 'https://api.bybit.com').rstrip('/'),
-                                    testnet=doc.get('testnet', False),
+                                    testnet=_is_bybit_paper(doc),
                                     trading_mode=doc.get('trading_mode', 'spot'),
                                     leverage=int(doc.get('leverage') or 1))
 
